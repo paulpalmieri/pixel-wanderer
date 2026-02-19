@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(lua -e:*)",
+      "Bash(luajit:*)",
+      "Bash(luac:*)",
+      "Bash(timeout 5 love:*)",
+      "Bash(wc:*)",
+      "Bash(timeout 3 love:*)",
+      "Bash(gh auth status:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
