@@ -67,9 +67,17 @@ function M.update_wood_chunks(dt, world)
             local dy = math.abs((c.y + CHUNK_SZ / 2) - (player.y + 8))
             if dx < 8 and dy < 8 then
                 gen_sound.play_pickup_sound(world)
-                player.wood_count = player.wood_count + 1
                 world.resource_accum.wood = world.resource_accum.wood + 1
                 world.resource_accum_timer = math.max(world.resource_accum_timer, 0.001)
+                -- Convert world position to screen position and fly to HUD
+                local sx = (c.x - world.camera_x) * C.PIXEL
+                local sy = (c.y - world.camera_y) * C.PIXEL
+                table.insert(world.flying_chunks, {
+                    x = sx, y = sy,
+                    tx = 16, ty = 16,  -- HUD chunk icon center
+                    delay = 0.25,      -- linger near player before flying
+                    t = 0, duration = 0.7,
+                })
                 table.remove(world.wood_chunks, i)
             end
         end
@@ -142,6 +150,23 @@ function M.update_floating_texts(dt, world)
         ft.life = ft.life - dt
         if ft.life <= 0 then
             table.remove(world.floating_texts, i)
+        end
+    end
+end
+
+function M.update_flying_chunks(dt, world)
+    for i = #world.flying_chunks, 1, -1 do
+        local fc = world.flying_chunks[i]
+        if fc.delay > 0 then
+            fc.delay = fc.delay - dt
+            -- Float upward slightly during delay
+            fc.y = fc.y - 30 * dt
+        else
+            fc.t = fc.t + dt / fc.duration
+            if fc.t >= 1 then
+                world.player.wood_count = world.player.wood_count + 1
+                table.remove(world.flying_chunks, i)
+            end
         end
     end
 end

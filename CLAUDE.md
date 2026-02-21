@@ -100,7 +100,7 @@ Generators are pure functions with stable return contracts. You can completely r
 
 | Generator | Return contract |
 |-----------|----------------|
-| `gen/character.generate()` | `{head, body, near_arm, far_arm, near_leg, far_leg, draw_order}` — each part has `{ox, oy, pixels}`, pixels are `{dx, dy, palette_idx}` |
+| `gen/character.generate()` | `{head, torso, near_arm, far_arm, near_leg, far_leg, draw_order, palette_name, colors, body_w, total_h}` — each part has `{w, h, pixels, anchor_x, anchor_y}`, pixels are `{dx, dy, c}` (palette idx) |
 | `gen/ground.generate()` | `{heightmap, decorations, width, base_y}` |
 | `gen/tree.generate_tree(size_hint)` | `{grid, w, h, tree_type}` — grid is 2D array of palette indices (0 = transparent) |
 | `gen/cloud.generate_cloud_shape(w, h)` | List of `{x, y, shade}` where shade is 0/1/2 |
@@ -134,4 +134,4 @@ Read-only. Never mutate `world`. Exception: `draw/player.draw_player()` returns 
 - No class hierarchy, no event system — just plain tables and functions.
 - Use `core/palette.set_color(idx)` and `core/palette.draw_pixel(x, y)` for all pixel rendering.
 - Constants go in `core/const.lua`, not inline magic numbers.
-- Palette indices are documented in `core/palette.lua` (1–37).
+- Palette indices are documented in `core/palette.lua` (1–64).

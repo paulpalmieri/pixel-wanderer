@@ -1,180 +1,164 @@
 -- draw/player.lua
--- Skeleton-based player sprite + axe rendering
--- 2px thick limbs, shoulder-anchored axe swing
+-- Part-based robot renderer with animation support
+-- Reads animation state from world.player, applies per-part offsets
+-- Returns axe anchor position for draw_axe()
 
 local palette = require("core.palette")
-local anim_data = require("gen.anim")
+local anim    = require("gen.anim")
 
-local set_color = palette.set_color
+local set_color  = palette.set_color
 local draw_pixel = palette.draw_pixel
 
 local M = {}
 
--- Bresenham pixel line
-local function draw_line(x1, y1, x2, y2, color_idx)
-    set_color(color_idx)
-    local dx = math.abs(x2 - x1)
-    local dy = math.abs(y2 - y1)
-    local sx = x1 < x2 and 1 or -1
-    local sy = y1 < y2 and 1 or -1
-    local err = dx - dy
-    while true do
-        draw_pixel(x1, y1)
-        if x1 == x2 and y1 == y2 then break end
-        local e2 = 2 * err
-        if e2 > -dy then err = err - dy; x1 = x1 + sx end
-        if e2 < dx then err = err + dx; y1 = y1 + sy end
+-- Get per-part offsets for the current animation state
+local function get_offsets(player)
+    local swing = player.axe_swing
+
+    -- Priority: swing > land squash > jump > walk > idle
+    if swing > 0 and swing < 1 then
+        return anim.get_swing_offsets(swing, player.facing)
     end
+
+    if not player.on_ground then
+        if player.vy < -20 then
+            return anim.get_jump_offsets("rising")
+        else
+            return anim.get_jump_offsets("falling")
+        end
+    end
+
+    if player.squash_timer and player.squash_timer > 0 then
+        local progress = 1 - (player.squash_timer / player.squash_duration)
+        return anim.get_land_offsets(progress)
+    end
+
+    if player.moving then
+        local walk = anim.walk
+        local frame_idx = player.walk_frame % walk.num_frames
+        return walk.frames[frame_idx] or {}
+    end
+
+    -- Idle: pure breathing, no lateral
+    return anim.get_idle_offsets(player.idle_timer or 0)
 end
 
--- Get animation offsets for a joint from walk frame data
-local function get_joint_offset(frame_data, joint_name)
-    if frame_data and frame_data[joint_name] then
-        return frame_data[joint_name][1], frame_data[joint_name][2]
-    end
+-- Get offset for a specific part from the offset table
+local function part_offset(offsets, part_name)
+    local o = offsets[part_name]
+    if o then return o[1], o[2] end
     return 0, 0
 end
 
 function M.draw_player(world)
     local player = world.player
+    local sprite = player.sprite
     local px = math.floor(player.x + 0.5)
     local py = math.floor(player.y + 0.5)
-    local sprite = player.sprite
-    local dir = player.facing
+    local facing = player.facing
+    local body_w = sprite.body_w
 
-    -- Compute animated joint positions
-    local animated = {}
-    local body_dy = 0
-    local head_dy = 0
+    -- Center the body in the 16px bounding box
+    local body_offset_x = math.floor((16 - body_w) / 2)
+    local base_x = px + body_offset_x
+    local base_y = py + (16 - sprite.total_h)
 
-    -- Get walk frame offsets
-    local frame_data = nil
-    if player.moving and player.on_ground then
-        frame_data = anim_data.walk.frames[player.walk_frame]
-        if frame_data then
-            body_dy = frame_data.body_dy or 0
-            head_dy = frame_data.head_dy or 0
+    -- Get animation offsets
+    local offsets = get_offsets(player)
+
+    -- Draw trail ghost (previous frame position, translucent)
+    if player.moving and player.on_ground and player.trail_x then
+        local trail_bx = math.floor(player.trail_x + 0.5) + body_offset_x
+        local trail_by = math.floor(player.trail_y + 0.5) + (16 - sprite.total_h)
+        local torso = sprite.torso
+        set_color(sprite.colors.body_lo, 0.25)
+        for _, p in ipairs(torso.pixels) do
+            local tdx = p.dx
+            if facing == 1 then tdx = (torso.w - 1) - p.dx end
+            draw_pixel(trail_bx + tdx, trail_by + torso.anchor_y + p.dy)
         end
     end
 
-    -- Apply canonical + walk offsets for each joint
-    for name, pos in pairs(sprite.joints) do
-        local ox, oy = get_joint_offset(frame_data, name)
-        animated[name] = {pos[1] + ox, pos[2] + oy}
-    end
-
-    -- Apply body bob to upper body joints
-    animated.neck[2] = animated.neck[2] + body_dy
-    animated.shoulder_n[2] = animated.shoulder_n[2] + body_dy
-    animated.shoulder_f[2] = animated.shoulder_f[2] + body_dy
-    animated.elbow_n[2] = animated.elbow_n[2] + body_dy
-    animated.elbow_f[2] = animated.elbow_f[2] + body_dy
-    animated.hand_n[2] = animated.hand_n[2] + body_dy
-    animated.hand_f[2] = animated.hand_f[2] + body_dy
-    animated.head_top[2] = animated.head_top[2] + head_dy
-    -- Hips bob too so body doesn't disconnect from legs
-    animated.hip_n[2] = animated.hip_n[2] + body_dy
-    animated.hip_f[2] = animated.hip_f[2] + body_dy
-
-    -- Hit animation: shoulder-anchored rotation (offsets in local space, no dir multiply)
-    if player.axe_swing > 0 and player.axe_swing < 1 then
-        local hit = anim_data.get_hit_offsets(player.axe_swing, sprite.arm_len)
-        if hit.elbow_n then
-            animated.elbow_n[1] = animated.elbow_n[1] + hit.elbow_n[1]
-            animated.elbow_n[2] = animated.elbow_n[2] + hit.elbow_n[2]
-        end
-        if hit.hand_n then
-            animated.hand_n[1] = animated.hand_n[1] + hit.hand_n[1]
-            animated.hand_n[2] = animated.hand_n[2] + hit.hand_n[2]
-        end
-    end
-
-    -- Idle breathing: arm bob
-    if player.idle_timer > 0 and not player.moving then
-        local phase = math.sin(player.idle_timer * math.pi * 0.8)
-        if phase > 0.3 then
-            animated.hand_n[2] = animated.hand_n[2] + 1
-            animated.hand_f[2] = animated.hand_f[2] + 1
-            animated.elbow_n[2] = animated.elbow_n[2] + 1
-            animated.elbow_f[2] = animated.elbow_f[2] + 1
-        end
-    end
-
-    -- Transform local coords to screen coords (facing flip)
-    local function to_screen(lx, ly)
-        if dir == 1 then
-            return px + lx, py + ly
-        else
-            return px + 15 - lx, py + ly
-        end
-    end
-
-    local colors = sprite.colors
-    local limb_defs = sprite.limb_defs
-
-    -- Draw parts in order
+    -- Draw each part in draw order
+    -- The facing flip works as follows:
+    --   1. Each part has an anchor (defined for facing LEFT — the default art direction)
+    --   2. When facing RIGHT, we mirror the entire character around the body center
+    --   3. Anim offsets are in "character space" — positive = forward (toward facing dir)
     for _, part_name in ipairs(sprite.draw_order) do
-        if part_name == "head" then
-            local block = sprite.head
-            local hx = animated.head_top[1] - math.floor(block.w / 2)
-            local hy = animated.head_top[2]
-            for _, pixel in ipairs(block.pixels) do
-                local dx = pixel[1]
-                -- Idle head look: shift face pixels (non-dark)
-                if pixel[3] ~= colors.dk then
-                    dx = dx + (player.idle_look_dir or 0)
-                end
-                local sx, sy = to_screen(hx + dx, hy + pixel[2])
-                set_color(pixel[3])
-                draw_pixel(sx, sy)
+        local part = sprite[part_name]
+        if part then
+            local odx, ody = part_offset(offsets, part_name)
+
+            -- Compute the anchor in screen space
+            local ax = part.anchor_x
+            if facing == 1 then
+                -- Mirror anchor AND part width around body center
+                ax = body_w - part.anchor_x - part.w
             end
 
-        elseif part_name == "body" then
-            local block = sprite.body
-            local bx = block.ox
-            local by = animated.neck[2]
-            for _, pixel in ipairs(block.pixels) do
-                local sx, sy = to_screen(bx + pixel[1], by + pixel[2])
-                set_color(pixel[3])
-                draw_pixel(sx, sy)
+            local custom_arm = nil
+            if part_name == "near_arm" and player.axe_swing > 0 and player.axe_swing < 1 then
+                custom_arm = anim.get_swing_arm_shape(player.axe_swing)
             end
 
-        else
-            -- Draw limb: outline line + fill line (2px wide)
-            local limb = limb_defs[part_name]
-            if limb then
-                local outline_idx = colors[limb.color]
-                local fill_idx = limb.fill and colors[limb.fill] or outline_idx
-                local chain = limb.chain
-                local w_off = limb.width_dir * dir
+            if custom_arm then
+                for _, p in ipairs(custom_arm) do
+                    local pdx = p.dx * facing -- custom arm defines +x as FORWARD
+                    local final_x = base_x + ax + pdx + odx * facing
+                    local final_y = base_y + part.anchor_y + p.dy + ody
 
-                for i = 1, #chain - 1 do
-                    local j1 = animated[chain[i]]
-                    local j2 = animated[chain[i + 1]]
-                    local sx1, sy1 = to_screen(j1[1], j1[2])
-                    local sx2, sy2 = to_screen(j2[1], j2[2])
-                    -- Outer edge = outline color, inner edge = fill color
-                    draw_line(sx1, sy1, sx2, sy2, outline_idx)
-                    draw_line(sx1 + w_off, sy1, sx2 + w_off, sy2, fill_idx)
+                    set_color(sprite.colors.body_hi)
+                    draw_pixel(final_x, final_y)
                 end
+            else
+                -- Draw each pixel of the part
+                for _, p in ipairs(part.pixels) do
+                    local pdx = p.dx
+                    if facing == 1 then
+                        -- Mirror pixel within the part
+                        pdx = (part.w - 1) - p.dx
+                    end
 
-                -- Foot: 3px wide (extra outline pixel on outer edge)
-                if limb.foot then
-                    local foot = animated[chain[#chain]]
-                    local fsx, fsy = to_screen(foot[1], foot[2])
-                    set_color(outline_idx)
-                    draw_pixel(fsx - w_off, fsy)
+                    local final_x = base_x + ax + pdx + odx * facing
+                    local final_y = base_y + part.anchor_y + p.dy + ody
+
+                    set_color(p.c)
+                    draw_pixel(final_x, final_y)
                 end
             end
         end
     end
 
-    -- Return animated joints for axe code
-    local hand_sx, hand_sy = to_screen(animated.hand_n[1], animated.hand_n[2])
+    -- Compute axe anchor: near arm tip position
+    local near_arm = sprite.near_arm
+    local arm_odx, arm_ody = part_offset(offsets, "near_arm")
+    local arm_ax = near_arm.anchor_x
+    if facing == 1 then
+        arm_ax = body_w - near_arm.anchor_x - near_arm.w
+    end
+
+    local hand_dx = 0
+    local hand_dy = near_arm.h
+    if player.axe_swing > 0 and player.axe_swing < 1 then
+        local custom_arm = anim.get_swing_arm_shape(player.axe_swing)
+        if custom_arm then
+            local last_p = custom_arm[#custom_arm]
+            hand_dx = last_p.dx
+            hand_dy = last_p.dy + 1
+        end
+    end
+
+    -- Axe attaches at the hand pixel smoothly
+    local axe_x = base_x + arm_ax + (arm_odx + hand_dx) * facing
+    local axe_y = base_y + near_arm.anchor_y + arm_ody + hand_dy
+
+    -- Axe follows arm position exactly — no separate bob timer
     return {
-        joints = animated,
-        hand_x = hand_sx,
-        hand_y = hand_sy,
+        hand_x = axe_x,
+        hand_y = axe_y,
+        base_x = base_x,
+        base_y = base_y,
+        body_w = body_w
     }
 end
 
@@ -187,67 +171,197 @@ function M.draw_axe(world, result)
     local hy = result.hand_y
     local d = dir
 
+    -- Color constants
+    local HANDLE_DARK = 15    -- dark bark
+    local HANDLE_LIGHT = 16   -- light bark
+    local HANDLE_HI = 18      -- wood highlight
+    local BLADE_INNER = 20    -- steel mid
+    local BLADE_OUTER = 19    -- steel hi
+    local BLADE_EDGE = 21     -- steel shadow
+    local SMEAR = 14          -- white flash for motion smear
+
     local axe_pixels = {}
-    if swing <= 0 or swing >= 1 then
-        -- Rest: axe hangs down from hand
-        table.insert(axe_pixels, {hx,        hy + 1, 18})
-        table.insert(axe_pixels, {hx,        hy + 2, 16})
-        table.insert(axe_pixels, {hx,        hy + 3, 15})
-        table.insert(axe_pixels, {hx - d,    hy + 2, 21})
-        table.insert(axe_pixels, {hx - d,    hy + 3, 20})
-        table.insert(axe_pixels, {hx - d,    hy + 4, 20})
-        table.insert(axe_pixels, {hx - d*2,  hy + 2, 20})
-        table.insert(axe_pixels, {hx - d*2,  hy + 3, 20})
-        table.insert(axe_pixels, {hx - d*2,  hy + 4, 20})
-        table.insert(axe_pixels, {hx - d*3,  hy + 3, 19})
-        table.insert(axe_pixels, {hx - d*3,  hy + 4, 19})
-        table.insert(axe_pixels, {hx - d*2,  hy + 5, 19})
-        table.insert(axe_pixels, {hx - d,    hy + 5, 21})
-    elseif swing < 0.3 then
-        -- Windup: axe points upward
-        table.insert(axe_pixels, {hx,        hy,     18})
-        table.insert(axe_pixels, {hx,        hy - 1, 16})
-        table.insert(axe_pixels, {hx,        hy - 2, 15})
-        table.insert(axe_pixels, {hx - d,    hy - 2, 21})
-        table.insert(axe_pixels, {hx - d,    hy - 3, 20})
-        table.insert(axe_pixels, {hx - d,    hy - 4, 20})
-        table.insert(axe_pixels, {hx - d*2,  hy - 2, 20})
-        table.insert(axe_pixels, {hx - d*2,  hy - 3, 20})
-        table.insert(axe_pixels, {hx - d*2,  hy - 4, 20})
-        table.insert(axe_pixels, {hx - d*3,  hy - 3, 19})
-        table.insert(axe_pixels, {hx - d*3,  hy - 4, 19})
-        table.insert(axe_pixels, {hx - d*2,  hy - 5, 19})
-        table.insert(axe_pixels, {hx - d,    hy - 5, 21})
-    elseif swing < 0.6 then
-        -- Strike: axe extends forward
-        table.insert(axe_pixels, {hx + d*4,  hy,     18})
-        table.insert(axe_pixels, {hx + d*5,  hy,     16})
-        table.insert(axe_pixels, {hx + d*6,  hy - 1, 21})
-        table.insert(axe_pixels, {hx + d*6,  hy,     15})
-        table.insert(axe_pixels, {hx + d*6,  hy + 1, 21})
-        table.insert(axe_pixels, {hx + d*7,  hy - 2, 19})
-        table.insert(axe_pixels, {hx + d*7,  hy - 1, 20})
-        table.insert(axe_pixels, {hx + d*7,  hy,     20})
-        table.insert(axe_pixels, {hx + d*7,  hy + 1, 20})
-        table.insert(axe_pixels, {hx + d*7,  hy + 2, 19})
-        table.insert(axe_pixels, {hx + d*8,  hy - 1, 19})
-        table.insert(axe_pixels, {hx + d*8,  hy,     19})
-        table.insert(axe_pixels, {hx + d*8,  hy + 1, 19})
+    if swing <= 0.0 then
+        -- REST: held horizontally forward
+        table.insert(axe_pixels, {hx,       hy,     HANDLE_DARK})
+        table.insert(axe_pixels, {hx + d,   hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx + d*2, hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx + d*3, hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx + d*4, hy,     HANDLE_HI})
+        -- Big Blade head (Standard Shape)
+        table.insert(axe_pixels, {hx + d*5, hy - 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*5, hy - 1, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*5, hy,     BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*5, hy + 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*5, hy + 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*6, hy - 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*6, hy - 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*6, hy,     BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*6, hy + 1, BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*6, hy + 2, BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*7, hy - 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*7, hy,     BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*7, hy + 1, BLADE_EDGE})
+
+    elseif swing <= 0.25 then
+        -- WINDUP: hand is down/back. Axe points up and back
+        table.insert(axe_pixels, {hx,       hy,     HANDLE_DARK})
+        table.insert(axe_pixels, {hx - d,   hy - 1, HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx - d*2, hy - 2, HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx - d*3, hy - 3, HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx - d*4, hy - 4, HANDLE_HI})
+        -- Blade pointing back/up (Standard Shape Rotated)
+        table.insert(axe_pixels, {hx - d*3, hy - 5, BLADE_OUTER})
+        table.insert(axe_pixels, {hx - d*4, hy - 6, BLADE_OUTER})
+        table.insert(axe_pixels, {hx - d*5, hy - 5, BLADE_INNER})
+        table.insert(axe_pixels, {hx - d*6, hy - 4, BLADE_INNER})
+        table.insert(axe_pixels, {hx - d*7, hy - 3, BLADE_OUTER})
+        table.insert(axe_pixels, {hx - d*4, hy - 7, BLADE_OUTER})
+        table.insert(axe_pixels, {hx - d*5, hy - 6, BLADE_INNER})
+        table.insert(axe_pixels, {hx - d*6, hy - 5, BLADE_INNER})
+        table.insert(axe_pixels, {hx - d*7, hy - 4, BLADE_EDGE})
+        table.insert(axe_pixels, {hx - d*8, hy - 3, BLADE_EDGE})
+        table.insert(axe_pixels, {hx - d*6, hy - 7, BLADE_INNER})
+        table.insert(axe_pixels, {hx - d*7, hy - 6, BLADE_EDGE})
+        table.insert(axe_pixels, {hx - d*8, hy - 5, BLADE_EDGE})
+
+    elseif swing <= 0.35 then
+        -- PEAK: hand is mid-back. Axe points steeply up
+        table.insert(axe_pixels, {hx,       hy,     HANDLE_DARK})
+        table.insert(axe_pixels, {hx,       hy - 1, HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx,       hy - 2, HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx,       hy - 3, HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx,       hy - 4, HANDLE_HI})
+        -- Blade high and pointing forward
+        table.insert(axe_pixels, {hx + d*2, hy - 5, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d,   hy - 5, BLADE_OUTER})
+        table.insert(axe_pixels, {hx,       hy - 5, BLADE_INNER})
+        table.insert(axe_pixels, {hx - d,   hy - 5, BLADE_INNER})
+        table.insert(axe_pixels, {hx - d*2, hy - 5, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*2, hy - 6, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d,   hy - 6, BLADE_INNER})
+        table.insert(axe_pixels, {hx,       hy - 6, BLADE_INNER})
+        table.insert(axe_pixels, {hx - d,   hy - 6, BLADE_EDGE})
+        table.insert(axe_pixels, {hx - d*2, hy - 6, BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d,   hy - 7, BLADE_INNER})
+        table.insert(axe_pixels, {hx,       hy - 7, BLADE_EDGE})
+        table.insert(axe_pixels, {hx - d,   hy - 7, BLADE_EDGE})
+
+    elseif swing <= 0.45 then
+        -- STRIKE: hand is front-down. Axe swinging down
+        table.insert(axe_pixels, {hx,       hy,     HANDLE_DARK})
+        table.insert(axe_pixels, {hx + d,   hy + 1, HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx + d*2, hy + 2, HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx + d*3, hy + 3, HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx + d*4, hy + 4, HANDLE_HI})
+        -- Blade angled down-front
+        table.insert(axe_pixels, {hx + d*6, hy + 3, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*5, hy + 4, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*5, hy + 5, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*4, hy + 6, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*3, hy + 7, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*7, hy + 4, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*6, hy + 5, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*5, hy + 6, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*4, hy + 7, BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*3, hy + 8, BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*7, hy + 6, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*6, hy + 7, BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*5, hy + 8, BLADE_EDGE})
+
+    elseif swing <= 0.65 then
+        -- IMPACT: hand straight down. Axe points down-front
+        table.insert(axe_pixels, {hx,       hy,     HANDLE_DARK})
+        table.insert(axe_pixels, {hx,       hy + 1, HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx,       hy + 2, HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx + d,   hy + 3, HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx + d,   hy + 4, HANDLE_HI})
+        -- Blade
+        table.insert(axe_pixels, {hx + d*3, hy + 3, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*2, hy + 4, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*1, hy + 5, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*1, hy + 6, BLADE_INNER})
+        table.insert(axe_pixels, {hx,       hy + 7, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*3, hy + 4, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*2, hy + 5, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*2, hy + 6, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*1, hy + 7, BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*1, hy + 8, BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*3, hy + 6, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*2, hy + 7, BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*2, hy + 8, BLADE_EDGE})
+
     else
-        -- Follow-through: axe forward-down
-        table.insert(axe_pixels, {hx + d,    hy + 1, 18})
-        table.insert(axe_pixels, {hx + d,    hy + 2, 16})
-        table.insert(axe_pixels, {hx + d,    hy + 3, 15})
-        table.insert(axe_pixels, {hx + d*2,  hy + 2, 21})
-        table.insert(axe_pixels, {hx + d*2,  hy + 3, 20})
-        table.insert(axe_pixels, {hx + d*2,  hy + 4, 20})
-        table.insert(axe_pixels, {hx + d*3,  hy + 2, 20})
-        table.insert(axe_pixels, {hx + d*3,  hy + 3, 20})
-        table.insert(axe_pixels, {hx + d*3,  hy + 4, 20})
-        table.insert(axe_pixels, {hx + d*4,  hy + 3, 19})
-        table.insert(axe_pixels, {hx + d*4,  hy + 4, 19})
-        table.insert(axe_pixels, {hx + d*3,  hy + 5, 19})
-        table.insert(axe_pixels, {hx + d*2,  hy + 5, 21})
+        -- REBOUND / RECOVERY
+        -- Identical to REST, but positioned at the current hx, hy
+        table.insert(axe_pixels, {hx,       hy,     HANDLE_DARK})
+        table.insert(axe_pixels, {hx + d,   hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx + d*2, hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx + d*3, hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx + d*4, hy,     HANDLE_HI})
+        
+        table.insert(axe_pixels, {hx + d*5, hy - 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*5, hy - 1, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*5, hy,     BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*5, hy + 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*5, hy + 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*6, hy - 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*6, hy - 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*6, hy,     BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*6, hy + 1, BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*6, hy + 2, BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*7, hy - 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*7, hy,     BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*7, hy + 1, BLADE_EDGE})
+    end
+
+    -- Dynamic Smear: keyframed crescent arc from shoulder pivot
+    if swing > 0.0 and swing <= 0.45 then
+        local cx = result.base_x + math.floor(result.body_w / 2)
+        local cy = result.base_y + 4 -- shoulder pivot
+
+        local radius = 10
+        -- Arc angles: behind-down to forward-down (0=right, pi=left, -pi/2=up)
+        local a0, a1 -- start and end angle for this keyframe
+        if swing <= 0.25 then
+            -- WINDUP: short arc behind the character
+            a0 = math.pi * 0.75
+            a1 = math.pi * 0.55
+        elseif swing <= 0.35 then
+            -- PEAK: arc sweeps overhead
+            a0 = math.pi * 0.65
+            a1 = math.pi * 0.2
+        else
+            -- STRIKE: full crescent from behind to forward-down
+            a0 = math.pi * 0.5
+            a1 = math.pi * -0.2
+        end
+
+        -- Sample the arc and draw a wide crescent (inner + outer radius)
+        local r_inner = radius - 2
+        local r_outer = radius + 1
+        local steps = 16
+        for i = 0, steps do
+            local t = i / steps
+            local angle = a0 + (a1 - a0) * t
+            local cos_a = math.cos(angle)
+            local sin_a = -math.sin(angle) -- flip Y (screen coords)
+
+            -- Outer edge
+            local ox = cx + math.floor(cos_a * r_outer * d + 0.5)
+            local oy = cy + math.floor(sin_a * r_outer + 0.5)
+            -- Inner edge
+            local ix = cx + math.floor(cos_a * r_inner * d + 0.5)
+            local iy = cy + math.floor(sin_a * r_inner + 0.5)
+            -- Center
+            local mx = cx + math.floor(cos_a * radius * d + 0.5)
+            local my = cy + math.floor(sin_a * radius + 0.5)
+
+            set_color(SMEAR)
+            draw_pixel(ox, oy)
+            draw_pixel(ix, iy)
+            draw_pixel(mx, my)
+        end
     end
 
     for _, ap in ipairs(axe_pixels) do

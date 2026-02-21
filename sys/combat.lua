@@ -8,9 +8,9 @@ local M = {}
 function M.update(dt, world)
     local player = world.player
 
-    -- Axe swing timer
+    -- Axe swing timer (0.38s total — punchy and snappy timing)
     if player.axe_swing > 0 then
-        player.axe_swing = player.axe_swing + dt / 0.25
+        player.axe_swing = player.axe_swing + dt / 0.38
         if player.axe_swing >= 1 then
             player.axe_swing = 0
         end
@@ -19,8 +19,8 @@ function M.update(dt, world)
         player.axe_cooldown = player.axe_cooldown - dt
     end
 
-    -- Hit detection (swing progress 0.3-0.6)
-    if player.axe_swing >= 0.3 and player.axe_swing <= 0.6 and not player.axe_has_hit then
+    -- Hit detection (swing progress 0.30-0.45 = strike phase)
+    if player.axe_swing >= 0.30 and player.axe_swing <= 0.45 and not player.axe_has_hit then
         for ti = #world.trees, 1, -1 do
             local tree = world.trees[ti]
             if tree.hp > 0 then

@@ -3,8 +3,8 @@
 
 return {
     PIXEL       = 4,
-    GAME_W      = 128,
-    GAME_H      = 96,
+    GAME_W      = 160,
+    GAME_H      = 90,
     GRAVITY     = 450,
     JUMP_VEL    = -180,
     MOVE_SPEED  = 60,

@@ -29,7 +29,27 @@ local PIXEL  = C.PIXEL
 local GAME_W = C.GAME_W
 local GAME_H = C.GAME_H
 
+-- Base (virtual) screen size — all draw code targets this
+local BASE_W = GAME_W * PIXEL   -- 640
+local BASE_H = GAME_H * PIXEL   -- 360
+
 local world
+local is_fullscreen = false
+
+-- Compute scale and offset to uniformly fit BASE_W×BASE_H into current window
+local function get_scale_and_offset()
+    local win_w, win_h = love.graphics.getDimensions()
+    local scale = math.min(win_w / BASE_W, win_h / BASE_H)
+    local ox = math.floor((win_w - BASE_W * scale) / 2)
+    local oy = math.floor((win_h - BASE_H * scale) / 2)
+    return scale, ox, oy
+end
+
+-- Transform screen mouse coordinates to virtual (base) coordinates
+local function screen_to_game(mx, my)
+    local scale, ox, oy = get_scale_and_offset()
+    return (mx - ox) / scale, (my - oy) / scale
+end
 
 -- ============================================================
 -- LOVE CALLBACKS
@@ -66,12 +86,18 @@ function love.keypressed(key)
         gen_cloud.generate_cloud_textures(world)
         world.player.sprite = gen_char.generate()
     end
+    if key == "b" then
+        is_fullscreen = not is_fullscreen
+        love.window.setFullscreen(is_fullscreen, "desktop")
+    end
     if key == "escape" then
         love.event.quit()
     end
 end
 
 function love.mousepressed(x, y, button)
+    -- Transform screen coords to virtual coords for gameplay
+    local gx, gy = screen_to_game(x, y)
     if button == 1 and world.player.axe_cooldown <= 0 then
         world.player.axe_swing = 0.001
         world.player.axe_has_hit = false
@@ -89,43 +115,55 @@ function love.update(dt)
     sys_combat.update(dt, world)
     sys_physics.update_particles(dt, world)
     sys_physics.update_wood_chunks(dt, world)
+    sys_physics.update_flying_chunks(dt, world)
     sys_physics.update_floating_texts(dt, world)
     sys_physics.update_resource_log(dt, world)
 end
 
 function love.draw()
-    local SCREEN_W = GAME_W * PIXEL
-    local SCREEN_H = GAME_H * PIXEL
+    local scale, ox, oy = get_scale_and_offset()
     local cam_ix = math.floor(world.camera_x + 0.5)
     local cam_iy = math.floor(world.camera_y + 0.5)
 
-    -- Pass 1: Sky + clouds (direct to screen)
+    -- Clear to black (for letterbox bars if aspect doesn't match exactly)
+    love.graphics.clear(0, 0, 0, 1)
+
+    -- Apply global scale transform
+    love.graphics.push()
+    love.graphics.translate(ox, oy)
+    love.graphics.scale(scale, scale)
+
+    -- Pass 1: Sky + clouds (direct to virtual screen)
     draw_sky.draw_sky(world)
     draw_sky.draw_clouds(world)
 
-    -- Pass 2: Ground + walls (128x96 canvas, upscaled)
+    -- Pass 2: Ground + walls (GAME_W×GAME_H canvas, upscaled)
+    -- Reset transform for canvas rendering (canvas is only 160×90)
+    love.graphics.push()
+    love.graphics.origin()
     love.graphics.setCanvas(world.canvas)
     love.graphics.clear(0, 0, 0, 0)
-    love.graphics.push()
     love.graphics.translate(-cam_ix, -cam_iy)
 
     draw_terrain.draw_ground(cam_ix, cam_iy, world)
     draw_terrain.draw_walls(cam_ix, cam_iy, world)
 
-    love.graphics.pop()
     love.graphics.setCanvas()
+    love.graphics.pop()
     love.graphics.setColor(1, 1, 1)
     love.graphics.draw(world.canvas, 0, 0, 0, PIXEL, PIXEL)
 
-    -- Pass 2.5: Trees (direct to screen at PIXEL scale for sub-pixel bend)
-    love.graphics.setScissor(0, 0, SCREEN_W, SCREEN_H)
+    -- Pass 2.5: Trees (direct to virtual screen at PIXEL scale for sub-pixel bend)
+    love.graphics.setScissor(ox, oy, BASE_W * scale, BASE_H * scale)
     draw_trees.draw_trees(cam_ix, cam_iy, world)
     love.graphics.setScissor()
 
-    -- Pass 3: Foreground (wood chunks, player, axe, particles — 128x96 canvas)
+    -- Pass 3: Foreground (wood chunks, player, axe, particles — GAME_W×GAME_H canvas)
+    -- Reset transform for canvas rendering
+    love.graphics.push()
+    love.graphics.origin()
     love.graphics.setCanvas(world.canvas)
     love.graphics.clear(0, 0, 0, 0)
-    love.graphics.push()
     love.graphics.translate(-cam_ix, -cam_iy)
 
     draw_entities.draw_wood_chunks(world)
@@ -133,11 +171,13 @@ function love.draw()
     draw_player.draw_axe(world, anim)
     draw_entities.draw_particles(world)
 
-    love.graphics.pop()
     love.graphics.setCanvas()
+    love.graphics.pop()
     love.graphics.setColor(1, 1, 1)
     love.graphics.draw(world.canvas, 0, 0, 0, PIXEL, PIXEL)
 
-    -- Pass 4: HUD (screen-space)
+    -- Pass 4: HUD (virtual screen-space)
     draw_hud.draw_hud(world)
+
+    love.graphics.pop()
 end

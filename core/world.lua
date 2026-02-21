@@ -21,6 +21,7 @@ function M.new()
         resource_accum = { wood = 0 },  -- owned by sys/physics
         resource_accum_timer = 0,       -- owned by sys/physics
         resource_log = {},              -- owned by sys/physics, drawn by draw/hud
+        flying_chunks = {},             -- owned by sys/physics, drawn by draw/hud
     }
 end
 

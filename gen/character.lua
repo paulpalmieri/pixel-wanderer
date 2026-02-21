@@ -1,181 +1,268 @@
 -- gen/character.lua
--- Skeleton-based robot character generator
--- Style: dark outlines, colored fill inside. Simple boxy shapes.
+-- Part-based procedural robot generator
+-- Returns a table of body parts, each with pixel data and anchor points
+-- 16px bounding box, ~14px drawn (head 4 + torso 5 + legs 3 + antenna 1-2)
 
 local M = {}
 
--- 3 palettes, 4 colors each: {dark, primary, highlight, eye}
+-- Color palettes: each set creates a cohesive robot look
+-- 4 colors only: {body_hi, body_mid, body_lo, eye}
 local PALETTES = {
-    {24, 23, 22, 42},   -- Green Steel
-    {30, 29, 28, 45},   -- Steel Blue
-    {27, 26, 25, 44},   -- Warm Steel
+    { -- Dusty Sage
+        name = "sage",
+        body_hi = 49, body_mid = 50, body_lo = 51, eye = 52,
+    },
+    { -- Warm Clay
+        name = "clay",
+        body_hi = 53, body_mid = 54, body_lo = 55, eye = 56,
+    },
+    { -- Lavender Steel
+        name = "lavender",
+        body_hi = 57, body_mid = 58, body_lo = 59, eye = 60,
+    },
+    { -- Pale Sky
+        name = "sky",
+        body_hi = 61, body_mid = 62, body_lo = 63, eye = 64,
+    },
 }
 
-----------------------------------------------------------------
--- 3 HEADS — dark outline, colored fill
-----------------------------------------------------------------
+-- Body type variations affect torso dimensions
+local BODY_TYPES = {
+    { name = "standard", torso_w = 6, torso_h = 5 },
+    { name = "stocky",   torso_w = 7, torso_h = 4 },
+    { name = "tall",     torso_w = 6, torso_h = 6 },
+    { name = "tall",     torso_w = 6, torso_h = 6 },  -- weighted: tall appears 50%
+}
 
--- Square: 5w x 4h
-local function head_square()
-    return {w = 5, h = 4, pixels = {
-        {0,0,"dk"},{1,0,"dk"},{2,0,"dk"},{3,0,"dk"},{4,0,"dk"},
-        {0,1,"dk"},{1,1,"pr"},{2,1,"pr"},{3,1,"ey"},{4,1,"dk"},
-        {0,2,"dk"},{1,2,"pr"},{2,2,"pr"},{3,2,"pr"},{4,2,"dk"},
-        {1,3,"dk"},{2,3,"dk"},{3,3,"dk"},
-    }}
+-- Build pixel list with soft shading (2-tone: mid fill + lo shadow edge)
+-- Much subtler than the old 3-band approach
+local function make_soft_rect(w, h, pal, extras)
+    local pixels = {}
+    for row = 0, h - 1 do
+        for col = 0, w - 1 do
+            local color
+            -- Shadow: rightmost column only (single edge shadow)
+            if col == w - 1 then
+                color = pal.body_lo
+            -- Highlight: single specular pixel at top-left corner
+            elseif col == 0 and row == 0 then
+                color = pal.body_hi
+            else
+                color = pal.body_mid
+            end
+            table.insert(pixels, {dx = col, dy = row, c = color})
+        end
+    end
+    -- Apply extras (eyes, details) — overwrites existing pixels
+    if extras then
+        for _, e in ipairs(extras) do
+            for i, p in ipairs(pixels) do
+                if p.dx == e.dx and p.dy == e.dy then
+                    pixels[i].c = e.c
+                    break
+                end
+            end
+        end
+    end
+    return pixels
 end
 
--- Tall: 4w x 5h
-local function head_tall()
-    return {w = 4, h = 5, pixels = {
-        {0,0,"dk"},{1,0,"dk"},{2,0,"dk"},{3,0,"dk"},
-        {0,1,"dk"},{1,1,"pr"},{2,1,"pr"},{3,1,"dk"},
-        {0,2,"dk"},{1,2,"pr"},{2,2,"ey"},{3,2,"dk"},
-        {0,3,"dk"},{1,3,"pr"},{2,3,"pr"},{3,3,"dk"},
-        {1,4,"dk"},{2,4,"dk"},
-    }}
+-- Build a 1px-wide arm with lighter shading for visibility
+-- Uses body_hi so arms contrast against body_mid torso and show behind it
+local function make_arm(h, pal)
+    local pixels = {}
+    for row = 0, h - 1 do
+        table.insert(pixels, {dx = 0, dy = row, c = pal.body_hi})
+    end
+    return pixels
 end
 
--- Round: 5w x 4h, no top corners
-local function head_round()
-    return {w = 5, h = 4, pixels = {
-        {1,0,"dk"},{2,0,"dk"},{3,0,"dk"},
-        {0,1,"dk"},{1,1,"pr"},{2,1,"pr"},{3,1,"ey"},{4,1,"dk"},
-        {0,2,"dk"},{1,2,"pr"},{2,2,"pr"},{3,2,"pr"},{4,2,"dk"},
-        {1,3,"dk"},{2,3,"dk"},{3,3,"dk"},
-    }}
+local function make_leg(h, pal)
+    local pixels = {}
+    for row = 0, h - 1 do
+        local color
+        if row == h - 1 then
+            color = pal.body_lo   -- foot darker
+        else
+            color = pal.body_mid  -- body tone
+        end
+        table.insert(pixels, {dx = 0, dy = row, c = color})
+    end
+    return pixels
 end
-
-local HEAD_MAKERS = {head_square, head_tall, head_round}
-
-----------------------------------------------------------------
--- 3 TORSOS — dark outline, colored fill
-----------------------------------------------------------------
-
--- Standard: 6w, big color box
-local function torso_standard()
-    return {w = 6, h = 6, pixels = {
-        {2,0,"dk"},{3,0,"dk"},                                                 -- neck
-        {0,1,"dk"},{1,1,"dk"},{2,1,"dk"},{3,1,"dk"},{4,1,"dk"},{5,1,"dk"},     -- outline top
-        {0,2,"dk"},{1,2,"pr"},{2,2,"pr"},{3,2,"pr"},{4,2,"pr"},{5,2,"dk"},     -- fill
-        {0,3,"dk"},{1,3,"pr"},{2,3,"pr"},{3,3,"pr"},{4,3,"pr"},{5,3,"dk"},     -- fill
-        {0,4,"dk"},{1,4,"dk"},{2,4,"dk"},{3,4,"dk"},{4,4,"dk"},{5,4,"dk"},     -- outline bottom
-        {1,5,"dk"},{2,5,"dk"},{3,5,"dk"},{4,5,"dk"},                           -- hips
-    }}
-end
-
--- Armored: 6w, dark belt splits two color sections
-local function torso_armored()
-    return {w = 6, h = 6, pixels = {
-        {2,0,"dk"},{3,0,"dk"},                                                 -- neck
-        {0,1,"dk"},{1,1,"dk"},{2,1,"pr"},{3,1,"pr"},{4,1,"dk"},{5,1,"dk"},     -- outline + narrow fill
-        {0,2,"dk"},{1,2,"pr"},{2,2,"pr"},{3,2,"pr"},{4,2,"pr"},{5,2,"dk"},     -- fill
-        {0,3,"dk"},{1,3,"dk"},{2,3,"dk"},{3,3,"dk"},{4,3,"dk"},{5,3,"dk"},     -- belt divider
-        {0,4,"dk"},{1,4,"pr"},{2,4,"pr"},{3,4,"pr"},{4,4,"pr"},{5,4,"dk"},     -- fill
-        {1,5,"dk"},{2,5,"dk"},{3,5,"dk"},{4,5,"dk"},                           -- hips
-    }}
-end
-
--- Slim: 5w, compact color box
-local function torso_slim()
-    return {w = 5, h = 6, pixels = {
-        {1,0,"dk"},{2,0,"dk"},                                           -- neck
-        {0,1,"dk"},{1,1,"dk"},{2,1,"dk"},{3,1,"dk"},{4,1,"dk"},         -- outline top
-        {0,2,"dk"},{1,2,"pr"},{2,2,"pr"},{3,2,"pr"},{4,2,"dk"},         -- fill
-        {0,3,"dk"},{1,3,"pr"},{2,3,"pr"},{3,3,"pr"},{4,3,"dk"},         -- fill
-        {0,4,"dk"},{1,4,"dk"},{2,4,"dk"},{3,4,"dk"},{4,4,"dk"},         -- outline bottom
-        {1,5,"dk"},{2,5,"dk"},{3,5,"dk"},                               -- hips
-    }}
-end
-
-local TORSO_MAKERS = {torso_standard, torso_armored, torso_slim}
-
-----------------------------------------------------------------
--- GENERATOR
-----------------------------------------------------------------
 
 function M.generate()
-    local scheme = PALETTES[math.random(1, #PALETTES)]
-    local colors = { dk = scheme[1], pr = scheme[2], hi = scheme[3], ey = scheme[4] }
+    local pal = PALETTES[math.random(1, #PALETTES)]
+    local body_type = BODY_TYPES[math.random(1, #BODY_TYPES)]
 
-    local head_block = HEAD_MAKERS[math.random(1, 3)]()
-    local body_block = TORSO_MAKERS[math.random(1, 3)]()
-    local body_w = body_block.w
+    local torso_w = body_type.torso_w
+    local torso_h = body_type.torso_h
+    local head_w = 5  -- always narrower than torso
 
-    local leg_extra = math.random(0, 1)
-    local arm_extra = math.random(0, 1)
+    -- HEAD: 5×4, with eye style variation
+    local eye_style = math.random(1, 4)  -- 1=two slits, 2=visor bar, 3=cyclops, 4=dot eyes
+    local head_extras = {}
 
-    local function resolve(block)
-        local out = {}
-        for _, p in ipairs(block.pixels) do
-            out[#out + 1] = {p[1], p[2], colors[p[3]]}
+    if eye_style == 1 then
+        -- Two 1×2 eye slits
+        table.insert(head_extras, {dx = 1, dy = 1, c = pal.eye})
+        table.insert(head_extras, {dx = 1, dy = 2, c = pal.eye})
+        table.insert(head_extras, {dx = 3, dy = 1, c = pal.eye})
+        table.insert(head_extras, {dx = 3, dy = 2, c = pal.eye})
+    elseif eye_style == 2 then
+        -- Visor bar across row 1-2
+        for col = 1, 3 do
+            table.insert(head_extras, {dx = col, dy = 1, c = pal.eye})
         end
-        return out
+    elseif eye_style == 3 then
+        -- Single cyclops eye (2×2 center)
+        table.insert(head_extras, {dx = 1, dy = 1, c = pal.eye})
+        table.insert(head_extras, {dx = 2, dy = 1, c = pal.eye})
+        table.insert(head_extras, {dx = 1, dy = 2, c = pal.eye})
+        table.insert(head_extras, {dx = 2, dy = 2, c = pal.eye})
+    else
+        -- Dot eyes: two single pixels
+        table.insert(head_extras, {dx = 1, dy = 1, c = pal.eye})
+        table.insert(head_extras, {dx = 3, dy = 1, c = pal.eye})
     end
 
-    local head_cx = 7
-    local head_top_y = 1
-    local neck_y = head_top_y + head_block.h
-    local shoulder_y = neck_y + 1
-    local body_mid = math.floor(body_w / 2)
-    local body_ox = head_cx - body_mid
+    -- Neck accent: bottom row of head is darker (body_lo) for separation
+    for col = 0, head_w - 1 do
+        table.insert(head_extras, {dx = col, dy = 3, c = pal.body_lo})
+    end
 
-    local elbow_y = shoulder_y + 2 + arm_extra
-    local hand_y = elbow_y + 1
-    local arm_len = hand_y - shoulder_y
+    local head_pixels = make_soft_rect(head_w, 4, pal, head_extras)
 
-    local hip_y = neck_y + 5
-    local knee_y = hip_y + 2 + leg_extra
-    local foot_y = knee_y + 2
+    -- Antenna: 0-2px nub on top of head
+    local antenna_style = math.random(1, 4)  -- 1=none, 2=center nub, 3=offset spike, 4=twin antennae
+    local antenna_pixels = {}
+    if antenna_style == 2 then
+        table.insert(antenna_pixels, {dx = 2, dy = -1, c = pal.eye})
+    elseif antenna_style == 3 then
+        local side = math.random(0, 1) == 0 and 1 or 3
+        table.insert(antenna_pixels, {dx = side, dy = -1, c = pal.body_lo})
+        table.insert(antenna_pixels, {dx = side, dy = -2, c = pal.eye})
+    elseif antenna_style == 4 then
+        -- Twin short antennae
+        table.insert(antenna_pixels, {dx = 1, dy = -1, c = pal.body_lo})
+        table.insert(antenna_pixels, {dx = 3, dy = -1, c = pal.body_lo})
+    end
+    -- Merge antenna into head pixels
+    for _, ap in ipairs(antenna_pixels) do
+        table.insert(head_pixels, ap)
+    end
 
-    local joints = {
-        head_top   = {head_cx, head_top_y},
-        neck       = {head_cx, neck_y},
-        shoulder_n = {body_ox, shoulder_y},
-        shoulder_f = {body_ox + body_w - 1, shoulder_y},
-        elbow_n    = {body_ox, elbow_y},
-        elbow_f    = {body_ox + body_w - 1, elbow_y},
-        hand_n     = {body_ox, hand_y},
-        hand_f     = {body_ox + body_w - 1, hand_y},
-        hip_n      = {head_cx - 1, hip_y},
-        hip_f      = {head_cx + 1, hip_y},
-        knee_n     = {head_cx - 1, knee_y},
-        knee_f     = {head_cx + 1, knee_y},
-        foot_n     = {head_cx - 1, foot_y},
-        foot_f     = {head_cx + 1, foot_y},
-    }
+    -- TORSO: variable size, with detail variation
+    local detail_style = math.random(1, 5)
+    local torso_extras = {}
 
-    -- Limbs: near side = dark outline + colored fill, far side = all dark (shadow)
-    local limb_defs = {
-        far_arm  = {chain = {"shoulder_f","elbow_f","hand_f"}, color = "dk", width_dir = -1},
-        far_leg  = {chain = {"hip_f","knee_f","foot_f"}, color = "dk", width_dir = -1, foot = true},
-        near_leg = {chain = {"hip_n","knee_n","foot_n"}, color = "dk", fill = "pr",
-                    width_dir = 1, foot = true},
-        near_arm = {chain = {"shoulder_n","elbow_n","hand_n"}, color = "dk", fill = "pr",
-                    width_dir = 1},
-    }
+    if detail_style == 1 then
+        -- Horizontal panel line at row 2
+        for col = 1, torso_w - 2 do
+            table.insert(torso_extras, {dx = col, dy = 2, c = pal.body_lo})
+        end
+    elseif detail_style == 2 then
+        -- Two rivet dots (highlight)
+        table.insert(torso_extras, {dx = 1, dy = 1, c = pal.body_hi})
+        table.insert(torso_extras, {dx = torso_w - 2, dy = 1, c = pal.body_hi})
+    elseif detail_style == 3 then
+        -- Center accent plate (2×2, lighter)
+        local cx = math.floor(torso_w / 2) - 1
+        table.insert(torso_extras, {dx = cx, dy = 1, c = pal.body_hi})
+        table.insert(torso_extras, {dx = cx + 1, dy = 1, c = pal.body_hi})
+        table.insert(torso_extras, {dx = cx, dy = 2, c = pal.body_hi})
+        table.insert(torso_extras, {dx = cx + 1, dy = 2, c = pal.body_hi})
+    elseif detail_style == 4 then
+        -- Vertical stripe down center
+        local cx = math.floor(torso_w / 2)
+        for row = 0, torso_h - 1 do
+            table.insert(torso_extras, {dx = cx, dy = row, c = pal.body_lo})
+        end
+    else
+        -- Cross pattern
+        local cx = math.floor(torso_w / 2)
+        local cy = math.floor(torso_h / 2)
+        table.insert(torso_extras, {dx = cx, dy = cy, c = pal.body_hi})
+        table.insert(torso_extras, {dx = cx - 1, dy = cy, c = pal.body_hi})
+        table.insert(torso_extras, {dx = cx + 1, dy = cy, c = pal.body_hi})
+        table.insert(torso_extras, {dx = cx, dy = cy - 1, c = pal.body_hi})
+        table.insert(torso_extras, {dx = cx, dy = cy + 1, c = pal.body_hi})
+    end
+
+    -- Shoulder accents: 1px "pauldrons" on top corners of torso
+    local has_shoulders = math.random() > 0.4
+    if has_shoulders then
+        table.insert(torso_extras, {dx = 0, dy = 0, c = pal.body_lo})
+        table.insert(torso_extras, {dx = torso_w - 1, dy = 0, c = pal.body_lo})
+    end
+
+    local torso_pixels = make_soft_rect(torso_w, torso_h, pal, torso_extras)
+
+    -- ARMS: 1×4 each (darker shade for visibility)
+    local arm_pixels = make_arm(4, pal)
+
+    -- LEGS: 1×3 each, with foot pixel
+    local leg_pixels = make_leg(3, pal)
+
+    -- Head centering: center the narrower head on the wider torso
+    local head_offset_x = math.floor((torso_w - head_w) / 2)
+
+    local total_h = 4 + torso_h + 3  -- head + torso + legs
 
     return {
-        joints = joints,
-        colors = colors,
-        limb_defs = limb_defs,
-        draw_order = {"far_arm","far_leg","body","head","near_leg","near_arm"},
-        arm_len = arm_len,
-        skeleton = true,
+        -- Head: centered on torso, offset up from torso
         head = {
-            ox = head_cx - math.floor(head_block.w / 2),
-            oy = head_top_y,
-            w = head_block.w,
-            h = head_block.h,
-            pixels = resolve(head_block),
+            w = head_w, h = 4,
+            pixels = head_pixels,
+            anchor_x = head_offset_x, anchor_y = 0,
         },
-        body = {
-            ox = body_ox,
-            oy = neck_y,
-            w = body_w,
-            h = 6,
-            pixels = resolve(body_block),
+        -- Torso: anchored below head
+        torso = {
+            w = torso_w, h = torso_h,
+            pixels = torso_pixels,
+            anchor_x = 0, anchor_y = 4,  -- below head
         },
+        -- Arms: anchored 1px outside torso edge for visibility
+        near_arm = {
+            w = 1, h = 4,
+            pixels = arm_pixels,
+            anchor_x = torso_w, anchor_y = 4,   -- 1px outside right edge
+        },
+        far_arm = {
+            w = 1, h = 4,
+            pixels = arm_pixels,
+            anchor_x = -1, anchor_y = 4,         -- 1px outside left edge
+        },
+        -- Legs: anchored at hip (torso bottom)
+        near_leg = {
+            w = 1, h = 3,
+            pixels = leg_pixels,
+            anchor_x = torso_w - 2, anchor_y = 4 + torso_h,
+        },
+        far_leg = {
+            w = 1, h = 3,
+            pixels = leg_pixels,
+            anchor_x = 1, anchor_y = 4 + torso_h,
+        },
+        -- Draw order: far limbs behind, then body, then near limbs in front
+        draw_order = {"far_leg", "far_arm", "torso", "head", "near_leg", "near_arm"},
+        -- Metadata
+        palette_name = pal.name,
+        eye_style = eye_style,
+        antenna_style = antenna_style,
+        detail_style = detail_style,
+        body_type = body_type.name,
+        -- Colors for axe/effects
+        colors = {
+            eye = pal.eye,
+            body_hi = pal.body_hi,
+            body_mid = pal.body_mid,
+            body_lo = pal.body_lo,
+        },
+        -- Layout constants
+        body_w = torso_w,        -- widest part (torso) for flip math
+        head_w = head_w,
+        total_h = total_h,
     }
 end
 

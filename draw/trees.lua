@@ -9,6 +9,9 @@ local PIXEL = C.PIXEL
 
 local M = {}
 
+-- Cache falling tree images (weak keys: auto-cleaned when tree is removed)
+local fall_images = setmetatable({}, {__mode = "k"})
+
 function M.draw_trees(cam_ix, cam_iy, world)
     local PAL = palette.PAL
 
@@ -22,11 +25,27 @@ function M.draw_trees(cam_ix, cam_iy, world)
 
         -- Falling tree rendering
         if tree.falling then
-            local angle = tree.fall_angle * tree.fall_dir
-            local cos_a = cos(angle)
-            local sin_a = sin(angle)
             local pivot_x = tree.w / 2  -- center of trunk (grid-local)
             local cut_row = tree.h - tree.stump_h  -- row where cut happens
+
+            -- Build cached image for the falling part on first encounter
+            if not fall_images[tree] then
+                local imgdata = love.image.newImageData(tree.w, cut_row)
+                for ty = 1, cut_row do
+                    for tx = 1, tree.w do
+                        local c = tree.grid[ty][tx]
+                        if c ~= 0 then
+                            local color = PAL[c]
+                            imgdata:setPixel(tx - 1, ty - 1, color[1], color[2], color[3], 1)
+                        end
+                    end
+                end
+                local img = love.graphics.newImage(imgdata)
+                img:setFilter("nearest", "nearest")
+                fall_images[tree] = img
+            end
+
+            local angle = tree.fall_angle * tree.fall_dir
 
             -- Fade alpha after impact
             local fade_alpha = 1
@@ -47,23 +66,15 @@ function M.draw_trees(cam_ix, cam_iy, world)
                 end
             end
 
-            -- Draw falling part (rows above cut, rotated around base-center pivot)
-            for ty = 1, cut_row do
-                for tx = 1, tree.w do
-                    local c = tree.grid[ty][tx]
-                    if c ~= 0 then
-                        local dx = (tx - 1) - pivot_x
-                        local dy = (ty - 1) - cut_row  -- negative (above pivot)
-                        local rx = dx * cos_a - dy * sin_a
-                        local ry = dx * sin_a + dy * cos_a
-
-                        set_color(c, fade_alpha)
-                        local sx = (tree.x + pivot_x + rx - cam_ix) * PIXEL
-                        local sy = (tree.y + cut_row + ry - cam_iy) * PIXEL
-                        love.graphics.rectangle("fill", sx, sy, PIXEL, PIXEL)
-                    end
-                end
-            end
+            -- Draw falling part using LÖVE's native rotation (no pixel gaps)
+            love.graphics.setColor(1, 1, 1, fade_alpha)
+            love.graphics.draw(fall_images[tree],
+                (tree.x + pivot_x - cam_ix) * PIXEL,
+                (tree.y + cut_row - cam_iy) * PIXEL,
+                angle,
+                PIXEL, PIXEL,
+                pivot_x, cut_row
+            )
             return
         end
 

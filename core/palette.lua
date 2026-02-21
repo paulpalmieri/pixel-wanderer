@@ -62,6 +62,27 @@ M.PAL = {
     {0.400, 0.450, 0.500},  -- 46: gunmetal mid           #667380
     {0.200, 0.220, 0.260},  -- 47: gunmetal dark          #333842
     {0.600, 0.630, 0.680},  -- 48: gunmetal hi            #99a1ad
+    -- pastel robot palettes (4 palettes × 4 colors: hi, mid, lo, eye)
+    -- Dusty Sage
+    {0.784, 0.835, 0.725},  -- 49: sage hi                #c8d5b9
+    {0.561, 0.682, 0.482},  -- 50: sage mid               #8fae7b
+    {0.322, 0.478, 0.322},  -- 51: sage lo                #527a52
+    {0.949, 0.835, 0.494},  -- 52: sage eye (warm gold)   #f2d57e
+    -- Warm Clay
+    {0.910, 0.788, 0.627},  -- 53: clay hi                #e8c9a0
+    {0.761, 0.584, 0.420},  -- 54: clay mid               #c2956b
+    {0.478, 0.361, 0.259},  -- 55: clay lo                #7a5c42
+    {0.494, 0.784, 0.890},  -- 56: clay eye (sky blue)    #7ec8e3
+    -- Lavender Steel
+    {0.769, 0.722, 0.831},  -- 57: lavender hi            #c4b8d4
+    {0.545, 0.471, 0.651},  -- 58: lavender mid           #8b78a6
+    {0.353, 0.302, 0.431},  -- 59: lavender lo            #5a4d6e
+    {0.949, 0.647, 0.494},  -- 60: lavender eye (peach)   #f2a57e
+    -- Pale Sky
+    {0.722, 0.847, 0.910},  -- 61: sky hi                 #b8d8e8
+    {0.478, 0.686, 0.769},  -- 62: sky mid                #7aafc4
+    {0.290, 0.478, 0.561},  -- 63: sky lo                 #4a7a8f
+    {0.910, 0.722, 0.494},  -- 64: sky eye (amber)        #e8b87e
 }
 
 function M.set_color(idx, alpha)
