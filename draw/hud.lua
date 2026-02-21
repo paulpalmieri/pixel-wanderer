@@ -1,5 +1,5 @@
 -- draw/hud.lua
--- HUD overlay rendering (floating text, wood counter, UI hints)
+-- HUD overlay rendering (battery bar, floating text, wood counter, end screens)
 
 local palette = require("core.palette")
 local C = require("core.const")
@@ -39,9 +39,479 @@ local function ease_out(t)
     return 1 - t1 * t1 * t1
 end
 
+-- Lerp between two colors given t in [0,1]
+local function lerp_color(r1, g1, b1, r2, g2, b2, t)
+    return r1 + (r2 - r1) * t, g1 + (g2 - g1) * t, b1 + (b2 - b1) * t
+end
+
+-- ============================================================
+-- BATTERY BAR
+-- ============================================================
+function M.draw_battery(world)
+    local SCREEN_W = GAME_W * PIXEL
+    local SCREEN_H = GAME_H * PIXEL
+
+    -- Base battery duration = 10 + upgrade bonus
+    local max_battery = 10 + (world.upgrades and world.upgrades.battery_bonus or 0)
+    local frac = math.max(0, math.min(1, world.battery / max_battery))
+
+    -- Position at top-left with a bit of padding
+    local bx = 10
+    local by = 10
+    local bar_w = 60   -- pixels in virtual screen space
+    local bar_h = 8
+    -- little nub on the right like a real battery
+    local nub_w = 4
+    local nub_h = 4
+
+    -- Background (dark shell)
+    love.graphics.setColor(0.1, 0.1, 0.1, 0.85)
+    love.graphics.rectangle("fill", bx - 2, by - 2, bar_w + nub_w + 4, bar_h + 4)
+
+    -- Battery nub
+    love.graphics.setColor(0.25, 0.25, 0.25, 0.9)
+    love.graphics.rectangle("fill", bx + bar_w + 2, by + (bar_h - nub_h) / 2, nub_w, nub_h)
+
+    -- Fill color: green -> yellow -> red
+    local r, g, b
+    if frac > 0.5 then
+        -- green → yellow
+        local t = 1 - (frac - 0.5) * 2
+        r, g, b = lerp_color(0.15, 0.90, 0.25, 0.95, 0.85, 0.10, t)
+    else
+        -- yellow → red
+        local t = 1 - frac * 2
+        r, g, b = lerp_color(0.95, 0.85, 0.10, 0.95, 0.18, 0.10, t)
+    end
+
+    -- Pulse when critically low (<= 20%)
+    local alpha = 1.0
+    if frac <= 0.2 then
+        alpha = 0.6 + 0.4 * math.abs(math.sin(love.timer.getTime() * 8))
+    end
+
+    -- Filled portion
+    local fill_w = math.max(0, math.floor(bar_w * frac))
+    love.graphics.setColor(r, g, b, alpha)
+    love.graphics.rectangle("fill", bx, by, fill_w, bar_h)
+
+    -- Glossy highlight strip
+    love.graphics.setColor(1, 1, 1, 0.12 * alpha)
+    love.graphics.rectangle("fill", bx, by, fill_w, 2)
+
+    -- BATT label
+    love.graphics.setColor(0.8, 0.8, 0.8, 0.7)
+    local stime = string.format("%.0fs", math.max(0, world.battery))
+    love.graphics.print(stime, bx + bar_w + nub_w + 6, by - 2)
+end
+
+-- ============================================================
+-- GAMEOVER SCREEN
+-- ============================================================
+function M.draw_gameover(world)
+    local SCREEN_W = GAME_W * PIXEL
+    local SCREEN_H = GAME_H * PIXEL
+
+    -- Darken background overlay
+    love.graphics.setColor(0.02, 0.02, 0.06, 0.82)
+    love.graphics.rectangle("fill", 0, 0, SCREEN_W, SCREEN_H)
+
+    -- Panel
+    local pw = 320
+    local ph = 200
+    local px = (SCREEN_W - pw) / 2
+    local py = (SCREEN_H - ph) / 2
+
+    love.graphics.setColor(0.08, 0.08, 0.14, 0.96)
+    love.graphics.rectangle("fill", px, py, pw, ph)
+    love.graphics.setColor(0.65, 0.20, 0.15, 0.9)
+    love.graphics.setLineWidth(2)
+    love.graphics.rectangle("line", px, py, pw, ph)
+
+    -- Title: MISSION TERMINATED
+    love.graphics.setColor(0.95, 0.25, 0.15, 1.0)
+    local title = "MISSION TERMINATED"
+    local tw = world.font:getWidth(title)
+    love.graphics.print(title, px + (pw - tw) / 2, py + 24)
+
+    -- Separator line
+    love.graphics.setColor(0.65, 0.20, 0.15, 0.5)
+    love.graphics.setLineWidth(1)
+    love.graphics.line(px + 24, py + 70, px + pw - 24, py + 70)
+
+    -- Wood gathered
+    love.graphics.setColor(0.75, 0.75, 0.75, 0.9)
+    local sub = "Wood gathered this run:"
+    local sw = world.font:getWidth(sub)
+    love.graphics.print(sub, px + (pw - sw) / 2, py + 82)
+
+    local wc = PAL[13]
+    love.graphics.setColor(wc[1], wc[2], wc[3], 1.0)
+    local woodstr = tostring(world.wood_at_game_end)
+    local icon_s = 5
+    local combined_w = world.font:getWidth(woodstr) + icon_s * 5 + 8
+    local icon_x = px + (pw - combined_w) / 2
+    local text_x = icon_x + icon_s * 5 + 8
+    draw_chunk(icon_x, py + 115, icon_s, 1.0)
+    love.graphics.setColor(wc[1], wc[2], wc[3], 1.0)
+    love.graphics.print(woodstr, text_x, py + 112)
+
+    -- Continue button
+    local btn_w = 160
+    local btn_h = 36
+    local btn_x = px + (pw - btn_w) / 2
+    local btn_y = py + ph - 58
+
+    local mx, my = love.mouse.getPosition()
+    local scale, ox, oy = _get_scale_and_offset_cached()
+    local gmx = (mx - ox) / scale
+    local gmy = (my - oy) / scale
+    local hovered = (gmx >= btn_x and gmx <= btn_x + btn_w and gmy >= btn_y and gmy <= btn_y + btn_h)
+
+    if hovered then
+        love.graphics.setColor(0.25, 0.65, 0.95, 1.0)
+    else
+        love.graphics.setColor(0.15, 0.40, 0.65, 0.9)
+    end
+    love.graphics.rectangle("fill", btn_x, btn_y, btn_w, btn_h)
+    love.graphics.setColor(0.45, 0.80, 1.0, 0.6)
+    love.graphics.setLineWidth(1)
+    love.graphics.rectangle("line", btn_x, btn_y, btn_w, btn_h)
+
+    love.graphics.setColor(1.0, 1.0, 1.0, 1.0)
+    local btxt = "CONTINUE"
+    local bw = world.font:getWidth(btxt)
+    love.graphics.print(btxt, btn_x + (btn_w - bw) / 2, btn_y + (btn_h - 20) / 2)
+
+    -- Store button hitbox so mouse events can query it
+    world._gameover_btn = { x = btn_x, y = btn_y, w = btn_w, h = btn_h }
+end
+
+-- ============================================================
+-- SKILL TREE SCREEN
+-- ============================================================
+
+local SKILLS = {
+    -- Center
+    { id="core_robot", name="ROBOT", desc="A robot that can\ncut trees", cost=0, icon="robot", gx=0, gy=0, req=nil,
+      check=function(upg) return true end, apply=function(upg) end },
+
+    -- Top (Damage)
+    { id="axe_dmg_1", name="SHARP EDGE", desc="Pickaxe deals\n+1 damage per hit", cost=30, icon="axe", gx=0, gy=-1, req="core_robot",
+      check=function(upg) return upg.axe_damage and upg.axe_damage >= 1 end,
+      apply=function(upg) upg.axe_damage = (upg.axe_damage or 0) + 1 end },
+    { id="swing_spd_1", name="QUICK SWING", desc="Swing axe faster", cost=50, icon="axe", gx=0, gy=-2, req="axe_dmg_1",
+      check=function(upg) return upg.swing_speed and upg.swing_speed >= 1 end,
+      apply=function(upg) upg.swing_speed = (upg.swing_speed or 0) + 1 end },
+
+    -- Right (Battery)
+    { id="bat_flat_1", name="EXTENDED CELL", desc="Battery capacity\n+5 seconds", cost=40, icon="battery", gx=1, gy=0, req="core_robot",
+      check=function(upg) return upg.battery_bonus and upg.battery_bonus >= 5 end,
+      apply=function(upg) upg.battery_bonus = (upg.battery_bonus or 0) + 5 end },
+    { id="bat_leech_1", name="KINETIC CHARGE", desc="Restore 1s battery\nwhen you cut a tree", cost=80, icon="battery", gx=2, gy=0, req="bat_flat_1",
+      check=function(upg) return upg.battery_leech end,
+      apply=function(upg) upg.battery_leech = true end },
+
+    -- Bottom (Helper)
+    { id="helper_start", name="ROBOT BUDDY", desc="Start each run\nwith one free robot", cost=50, icon="robot", gx=0, gy=1, req="core_robot",
+      check=function(upg) return upg.free_robot end,
+      apply=function(upg) upg.free_robot = true end },
+
+    -- Left (Tree Upgrades)
+    { id="tree_hp_1", name="TOUGH BARK", desc="Trees have more\nhealth and wood", cost=40, icon="tree", gx=-1, gy=0, req="core_robot",
+      check=function(upg) return upg.tree_health_bonus and upg.tree_health_bonus >= 1 end,
+      apply=function(upg) upg.tree_health_bonus = (upg.tree_health_bonus or 0) + 1 end },
+    { id="tree_new_1", name="EXOTIC SEEDS", desc="Unlock new types\nof trees (Coming Soon)", cost=100, icon="tree", gx=-2, gy=0, req="tree_hp_1",
+      check=function(upg) return upg.new_trees end,
+      apply=function(upg) upg.new_trees = true end },
+}
+
+local function draw_skill_icon(icon, cx, cy, col)
+    -- simple 8x8 pixel icons
+    if icon == "robot" then
+        love.graphics.setColor(col[1], col[2], col[3], 0.9)
+        love.graphics.rectangle("fill", cx - 3, cy - 4, 6, 4) -- head
+        love.graphics.rectangle("fill", cx - 2, cy, 4, 3)     -- body
+        love.graphics.rectangle("fill", cx - 4, cy, 1, 2)     -- l arm
+        love.graphics.rectangle("fill", cx + 3, cy, 1, 2)     -- r arm
+        love.graphics.rectangle("fill", cx - 2, cy + 3, 1, 2) -- l leg
+        love.graphics.rectangle("fill", cx + 1, cy + 3, 1, 2) -- r leg
+        -- eye
+        love.graphics.setColor(0.2, 0.8, 1.0, 1.0)
+        love.graphics.rectangle("fill", cx - 1, cy - 3, 2, 1)
+    elseif icon == "battery" then
+        love.graphics.setColor(col[1], col[2], col[3], 0.9)
+        love.graphics.rectangle("fill", cx - 4, cy - 2, 8, 4)
+        love.graphics.rectangle("fill", cx + 4, cy - 1, 1, 2) -- nub
+        -- green fill (partial)
+        love.graphics.setColor(0.2, 0.9, 0.3, 0.8)
+        love.graphics.rectangle("fill", cx - 3, cy - 1, 5, 2)
+    elseif icon == "axe" then
+        love.graphics.setColor(col[1], col[2], col[3], 0.9)
+        -- handle
+        love.graphics.rectangle("fill", cx, cy - 4, 1, 8)
+        -- blade
+        local pts = {
+            cx, cy - 3,
+            cx + 3, cy - 2,
+            cx + 3, cy + 1,
+            cx, cy,
+        }
+        love.graphics.polygon("fill", pts)
+    elseif icon == "tree" then
+        love.graphics.setColor(col[1], col[2], col[3], 0.9)
+        love.graphics.rectangle("fill", cx - 1, cy, 2, 4) -- trunk
+        local pts = {
+            cx, cy - 4,
+            cx + 3, cy,
+            cx - 3, cy
+        }
+        love.graphics.polygon("fill", pts)
+    end
+end
+
+function M.draw_skilltree(world)
+    local SCREEN_W = GAME_W * PIXEL
+    local SCREEN_H = GAME_H * PIXEL
+
+    -- Full background
+    love.graphics.setColor(0.04, 0.04, 0.10, 0.96)
+    love.graphics.rectangle("fill", 0, 0, SCREEN_W, SCREEN_H)
+
+    -- Header
+    love.graphics.setColor(0.95, 0.80, 0.25, 1.0)
+    local title = "SKILL TREE"
+    local tw = world.font:getWidth(title)
+    love.graphics.print(title, (SCREEN_W - tw) / 2, 24)
+
+    -- Wood budget
+    local wc = PAL[13]
+    love.graphics.setColor(wc[1], wc[2], wc[3], 0.9)
+    local budget_str = "Wood: " .. tostring(world.player and world.player.wood_count or world.wood_at_game_end)
+    love.graphics.print(budget_str, 20, 24)
+
+    -- Instruction
+    love.graphics.setColor(0.5, 0.5, 0.5, 0.8)
+    love.graphics.print("Spend wood to unlock upgrades, then Play Again", (SCREEN_W - world.font:getWidth("Spend wood to unlock upgrades, then Play Again")) / 2, 56)
+
+    -- Skill tree logic
+    local node_s = 24
+    local spacing = 40
+    local center_x = SCREEN_W / 2
+    local center_y = SCREEN_H / 2 - 10
+
+    local wood = world.player and world.player.wood_count or world.wood_at_game_end
+
+    -- Build a lookup for skills by id to draw lines
+    local skill_by_id = {}
+    for _, sk in ipairs(SKILLS) do
+        skill_by_id[sk.id] = sk
+    end
+
+    -- Draw lines first
+    love.graphics.setLineWidth(2)
+    for _, sk in ipairs(SKILLS) do
+        if sk.req and skill_by_id[sk.req] then
+            local p = skill_by_id[sk.req]
+            local x1 = center_x + p.gx * spacing
+            local y1 = center_y + p.gy * spacing
+            local x2 = center_x + sk.gx * spacing
+            local y2 = center_y + sk.gy * spacing
+            
+            local owned = sk.check(world.upgrades)
+            local req_owned = p.check(world.upgrades)
+            
+            if owned then
+                love.graphics.setColor(0.3, 0.85, 0.4, 0.9)
+            elseif req_owned then
+                love.graphics.setColor(0.3, 0.55, 0.85, 0.5)
+            else
+                love.graphics.setColor(0.25, 0.25, 0.30, 0.4)
+            end
+            
+            love.graphics.line(x1, y1, x2, y2)
+        end
+    end
+
+    -- init hover table if needed
+    world._skill_btns = world._skill_btns or {}
+    for i in ipairs(world._skill_btns) do world._skill_btns[i] = nil end
+    local btn_idx = 1
+
+    local mx_s, my_s = love.mouse.getPosition()
+    local scale, ox, oy = _get_scale_and_offset_cached()
+    local gmx = (mx_s - ox) / scale
+    local gmy = (my_s - oy) / scale
+
+    local hovered_skill = nil
+    
+    for _, sk in ipairs(SKILLS) do
+        local cx = center_x + sk.gx * spacing
+        local cy = center_y + sk.gy * spacing
+        local req_owned = (sk.req == nil) or skill_by_id[sk.req].check(world.upgrades)
+        local owned = sk.check(world.upgrades)
+        local affordable = req_owned and (wood >= sk.cost)
+        
+        -- rect is centered on cx, cy
+        local rx = cx - node_s / 2
+        local ry = cy - node_s / 2
+        
+        local hovered = (gmx >= rx and gmx <= rx + node_s and gmy >= ry and gmy <= ry + node_s)
+        
+        if hovered then
+            hovered_skill = sk
+        end
+        
+        if sk.cost > 0 then
+            world._skill_btns[btn_idx] = { x = rx, y = ry, w = node_s, h = node_s, skill = sk }
+            btn_idx = btn_idx + 1
+        end
+        
+        -- Node background
+        if owned then
+            love.graphics.setColor(0.08, 0.28, 0.12, 0.95)
+        elseif hovered and affordable then
+            love.graphics.setColor(0.10, 0.20, 0.32, 0.97)
+        elseif req_owned then
+            love.graphics.setColor(0.12, 0.12, 0.16, 0.97)
+        else
+            love.graphics.setColor(0.04, 0.04, 0.06, 0.8)
+        end
+        love.graphics.rectangle("fill", rx, ry, node_s, node_s)
+
+        -- Border
+        if owned then
+            love.graphics.setColor(0.3, 0.85, 0.4, 0.9)
+        elseif affordable then
+            love.graphics.setColor(0.3, 0.55, 0.85, 0.7)
+        elseif req_owned then
+            love.graphics.setColor(0.4, 0.4, 0.5, 0.8)
+        else
+            love.graphics.setColor(0.15, 0.15, 0.20, 0.6)
+        end
+        love.graphics.setLineWidth(1)
+        love.graphics.rectangle("line", rx, ry, node_s, node_s)
+        
+        -- Icon
+        local icon_col = owned and {0.3, 0.9, 0.4} or (affordable and {0.6, 0.75, 0.95} or (req_owned and {0.4, 0.4, 0.45} or {0.2, 0.2, 0.2}))
+        draw_skill_icon(sk.icon, cx, cy, icon_col)
+    end
+
+    -- Play Again button
+    local btn_w = 200
+    local btn_h = 40
+    local btn_x = (SCREEN_W - btn_w) / 2
+    local btn_y = SCREEN_H - btn_h - 20
+
+    local hovered_btn = (gmx >= btn_x and gmx <= btn_x + btn_w and gmy >= btn_y and gmy <= btn_y + btn_h)
+    if hovered_btn then
+        love.graphics.setColor(0.35, 0.85, 0.35, 1.0)
+    else
+        love.graphics.setColor(0.18, 0.55, 0.20, 0.9)
+    end
+    love.graphics.rectangle("fill", btn_x, btn_y, btn_w, btn_h)
+    love.graphics.setColor(0.50, 1.0, 0.55, 0.6)
+    love.graphics.setLineWidth(1)
+    love.graphics.rectangle("line", btn_x, btn_y, btn_w, btn_h)
+
+    love.graphics.setColor(1, 1, 1, 1)
+    local btxt = "PLAY AGAIN"
+    local bw = world.font:getWidth(btxt)
+    love.graphics.print(btxt, btn_x + (btn_w - bw) / 2, btn_y + (btn_h - 20) / 2)
+
+    world._play_again_btn = { x = btn_x, y = btn_y, w = btn_w, h = btn_h }
+
+    -- Draw Tooltip for hovered skill
+    if hovered_skill then
+        local sk = hovered_skill
+        local req_owned = (sk.req == nil) or skill_by_id[sk.req].check(world.upgrades)
+        local owned = sk.check(world.upgrades)
+        local affordable = req_owned and (wood >= sk.cost)
+        
+        local tw = 160
+        local th = 100
+        
+        local tx = gmx + 15
+        local ty = gmy + 15
+        
+        if tx + tw > SCREEN_W then tx = gmx - tw - 15 end
+        if ty + th > SCREEN_H then ty = gmy - th - 15 end
+
+        love.graphics.setColor(0.08, 0.08, 0.14, 0.95)
+        love.graphics.rectangle("fill", tx, ty, tw, th)
+        love.graphics.setColor(0.4, 0.4, 0.5, 0.9)
+        love.graphics.setLineWidth(1)
+        love.graphics.rectangle("line", tx, ty, tw, th)
+        
+        -- Name
+        local col = owned and {0.35, 1.0, 0.5} or (affordable and {0.85, 0.90, 1.0} or {0.5, 0.5, 0.55})
+        love.graphics.setColor(col[1], col[2], col[3], 1.0)
+        local nw = world.font:getWidth(sk.name)
+        love.graphics.print(sk.name, tx + (tw - nw) / 2, ty + 8)
+        
+        -- Status / Cost
+        if sk.cost == 0 then
+            love.graphics.setColor(0.3, 0.95, 0.4, 1.0)
+            local badge = "CORE"
+            local bw = world.font:getWidth(badge)
+            love.graphics.print(badge, tx + (tw - bw) / 2, ty + 24)
+        elseif owned then
+            love.graphics.setColor(0.3, 0.95, 0.4, 1.0)
+            local badge = "UNLOCKED"
+            local bw = world.font:getWidth(badge)
+            love.graphics.print(badge, tx + (tw - bw) / 2, ty + 24)
+        elseif not req_owned then
+            love.graphics.setColor(0.8, 0.3, 0.3, 1.0)
+            local badge = "LOCKED"
+            local bw = world.font:getWidth(badge)
+            love.graphics.print(badge, tx + (tw - bw) / 2, ty + 24)
+        else
+            local cost_col = affordable and {0.95, 0.85, 0.25} or {0.55, 0.35, 0.15}
+            love.graphics.setColor(cost_col[1], cost_col[2], cost_col[3], 1.0)
+            local badge = sk.cost .. " wood"
+            local bw = world.font:getWidth(badge)
+            love.graphics.print(badge, tx + (tw - bw) / 2, ty + 24)
+        end
+        
+        -- Desc
+        love.graphics.setColor(0.65, 0.65, 0.70, 0.9)
+        local lines = {}
+        for line in (sk.desc .. "\n"):gmatch("([^\n]*)\n") do
+            table.insert(lines, line)
+        end
+        -- handle case where desc has no newlines 
+        if #lines == 0 and #sk.desc > 0 then table.insert(lines, sk.desc) end
+        
+        for li, line in ipairs(lines) do
+            local lw = world.font:getWidth(line)
+            love.graphics.print(line, tx + (tw - lw) / 2, ty + 50 + (li - 1) * 16)
+        end
+    end
+end
+
+-- ============================================================
+-- MAIN HUD DRAW ENTRY
+-- ============================================================
 function M.draw_hud(world)
     local SCREEN_W = GAME_W * PIXEL
     local SCREEN_H = GAME_H * PIXEL
+
+    -- Game over and skill tree screens are full-screen — draw instead of normal HUD
+    if world.game_state == "gameover" then
+        M.draw_gameover(world)
+        return
+    end
+    if world.game_state == "skilltree" then
+        M.draw_skilltree(world)
+        return
+    end
+
+    -- ── Normal playing HUD ──────────────────────────────────
+
+    -- Battery bar (top-left)
+    if world.battery then
+        M.draw_battery(world)
+    end
 
     -- Floating damage numbers
     for _, ft in ipairs(world.floating_texts) do
@@ -127,19 +597,49 @@ function M.draw_hud(world)
         draw_chunk(cx - 2*PIXEL, cy - 2*PIXEL, PIXEL, alpha)
     end
 
-    -- Wood total (top-left, persistent)
+    -- Wood total (top-left, persistent) — move right of battery
     if world.player.wood_count > 0 then
         local alpha = 0.9
-        draw_chunk(10, 10, icon_s, alpha)
+        draw_chunk(10, 38, icon_s, alpha)
         local c = PAL[13]
         love.graphics.setColor(c[1], c[2], c[3], alpha)
-        love.graphics.print(tostring(world.player.wood_count), 10 + 5*icon_s, 6)
+        love.graphics.print(tostring(world.player.wood_count), 10 + 5*icon_s, 34)
+    end
+
+    -- E-prompt near entrance button when player is nearby and can afford
+    if world.entrance_anim_done and world.player then
+        local px = world.player.x + 8
+        local entrance_zone_right = C.WALL_WIDTH + C.ENTRANCE_DOOR_W + 24
+        if px < entrance_zone_right then
+            local btn_screen_x = math.floor(((world._btn_x or 19) - world.camera_x) * PIXEL)
+            local btn_screen_y = math.floor(((world._btn_y or 64) - world.camera_y) * PIXEL)
+            if world.player.wood_count >= 20 then
+                -- Green prompt
+                love.graphics.setColor(0.3, 0.9, 0.3, 0.9)
+                love.graphics.print("[E] Spawn Robot (-20 wood)", btn_screen_x - 20, btn_screen_y - 24)
+            else
+                -- Grey prompt
+                love.graphics.setColor(0.6, 0.6, 0.6, 0.5)
+                love.graphics.print("[E] Need 20 wood", btn_screen_x - 20, btn_screen_y - 24)
+            end
+        end
     end
 
     -- UI hint
     local c = PAL[23]
     love.graphics.setColor(c[1], c[2], c[3], 0.6)
-    love.graphics.print("WASD + SPACE | LMB = chop | R = randomize | F5 = regenerate", 8, SCREEN_H - 20)
+    love.graphics.print("WASD + SPACE | LMB = chop | E = spawn robot | R = randomize", 8, SCREEN_H - 20)
+end
+
+-- Cache accessor for scale/offset (set by main.lua before the HUD is drawn)
+_get_scale_and_offset_cached = _get_scale_and_offset_cached or function()
+    local win_w, win_h = love.graphics.getDimensions()
+    local BASE_W = C.GAME_W * C.PIXEL
+    local BASE_H = C.GAME_H * C.PIXEL
+    local scale = math.min(win_w / BASE_W, win_h / BASE_H)
+    local ox = math.floor((win_w - BASE_W * scale) / 2)
+    local oy = math.floor((win_h - BASE_H * scale) / 2)
+    return scale, ox, oy
 end
 
 return M

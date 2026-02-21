@@ -34,7 +34,11 @@ end
 
 function M.draw_particles(world)
     for _, p in ipairs(world.particles) do
-        set_color(p.color)
+        local alpha = 1.0
+        if p.max_life and p.max_life > 0 then
+            alpha = math.min(1.0, p.life / (p.max_life * 0.4))
+        end
+        set_color(p.color, alpha)
         draw_pixel(math.floor(p.x), math.floor(p.y))
     end
 end

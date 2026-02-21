@@ -65,7 +65,7 @@ function M.update_wood_chunks(dt, world)
         if c.pickup_ready then
             local dx = math.abs((c.x + CHUNK_SZ / 2) - (player.x + 8))
             local dy = math.abs((c.y + CHUNK_SZ / 2) - (player.y + 8))
-            if dx < 8 and dy < 8 then
+            if dx < 24 and dy < 24 then
                 gen_sound.play_pickup_sound(world)
                 world.resource_accum.wood = world.resource_accum.wood + 1
                 world.resource_accum_timer = math.max(world.resource_accum_timer, 0.001)

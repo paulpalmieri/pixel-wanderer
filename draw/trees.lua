@@ -20,8 +20,8 @@ function M.draw_trees(cam_ix, cam_iy, world)
     local floor = math.floor
 
     local function draw_tree(tree)
-        -- Skip dead trees that aren't falling
-        if tree.hp <= 0 and not tree.falling then return end
+        -- Skip dead trees that aren't falling and aren't hesitating
+        if tree.hp <= 0 and not tree.falling and (tree.pre_fall_timer or 0) <= 0 then return end
 
         -- Falling tree rendering
         if tree.falling then

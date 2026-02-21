@@ -26,12 +26,15 @@ local function raster_trunk(grid, x1, y1, x2, y2, w1, w2, gw, gh)
             local right = math.min(gw, math.floor(px + half - 0.5))
             for gx = left, right do
                 local frac = (gx - (px - half)) / math.max(0.5, tw)
-                if frac < 0.28 then
-                    grid[gy][gx] = 18
-                elseif frac > 0.72 then
-                    grid[gy][gx] = 15
+                -- Add some bark texture: vertical stripes with some wobble
+                local noise = math.sin(gx * 1.8 + gy * 0.4) * 0.15 + math.cos(gx * 0.5) * 0.1
+                local bark = frac + noise
+                if bark < 0.25 then
+                    grid[gy][gx] = 18 -- light wood
+                elseif bark > 0.80 then
+                    grid[gy][gx] = 15 -- dark bark
                 else
-                    grid[gy][gx] = 16
+                    grid[gy][gx] = 16 -- mid brown
                 end
             end
         end
@@ -46,24 +49,31 @@ local function raster_foliage(grid, bcx, bcy, rx, ry, gw, gh)
     local y1 = math.min(gh, math.ceil(bcy + ry))
     local x0 = math.max(1,  math.floor(bcx - rx))
     local x1 = math.min(gw, math.ceil(bcx + rx))
-    local shift = (math.random() - 0.5) * 0.06
     for y = y0, y1 do
         for x = x0, x1 do
             local ndx = (x - bcx) / rx
             local ndy = (y - bcy) / ry
             local d2 = ndx * ndx + ndy * ndy
-            if d2 <= 1.0 then
-                local shade = ndx * 0.30 + ndy * 0.65 + d2 * 0.18
-                local dither = ((x + y) % 2) * 0.07 - 0.035
-                shade = shade + dither + shift
-                if shade < -0.10 then
-                    grid[y][x] = 36
-                elseif shade < 0.28 then
-                    grid[y][x] = 17
-                elseif shade < 0.58 then
-                    grid[y][x] = 7
+            
+            -- Add clumpiness to the edge and the shading
+            local clump = math.sin(x * 0.45) * math.cos(y * 0.45) * 0.25
+            local edge = d2 + clump
+            
+            if edge <= 1.0 then
+                -- Clustered specular / shadows based on direction and depth
+                local shade = ndx * 0.4 + ndy * 0.5 + edge * 0.3
+                -- add a bit of high-frequency noise for individual leaf clusters
+                local leaf_noise = (math.sin(x * 1.7) + math.cos(y * 1.3)) * 0.1
+                shade = shade + leaf_noise
+                
+                if shade < -0.15 then
+                    grid[y][x] = 36 -- Highlight
+                elseif shade < 0.30 then
+                    grid[y][x] = 17 -- Mid-light
+                elseif shade < 0.70 then
+                    grid[y][x] = 7  -- Core shadow
                 else
-                    grid[y][x] = 8
+                    grid[y][x] = 8  -- Deep shadow
                 end
             end
         end
@@ -79,15 +89,9 @@ function M.generate_tree(size_hint)
 
     local r = math.random()
     local tree_type
-    if r < 0.25 then tree_type = 1        -- round
-    elseif r < 0.48 then tree_type = 2    -- tall multi-blob
-    elseif r < 0.64 then tree_type = 3    -- conifer
-    elseif r < 0.82 then tree_type = 4    -- branching
+    if r < 0.40 then tree_type = 1        -- round
+    elseif r < 0.70 then tree_type = 3    -- conifer
     else tree_type = 5 end                -- wide spreading
-
-    if size_hint == "small" and math.random() < 0.25 then
-        tree_type = 6
-    end
 
     local sizes = {
         [1] = { small={w={14,20},h={32,44}}, medium={w={18,26},h={44,60}}, large={w={24,34},h={56,72}} },
@@ -253,8 +257,8 @@ function M.generate_trees(world)
             grid = tree_data.grid,
             w = tree_data.w,
             h = tree_data.h,
-            hp = 5,
-            max_hp = 5,
+            hp = 5 + (world.upgrades and world.upgrades.tree_health_bonus and (world.upgrades.tree_health_bonus * 5) or 0),
+            max_hp = 5 + (world.upgrades and world.upgrades.tree_health_bonus and (world.upgrades.tree_health_bonus * 5) or 0),
             shake_timer = 0,
             flash_timer = 0,
             bend_timer = 0,
@@ -271,38 +275,98 @@ function M.generate_trees(world)
         })
     end
 
-    local num_clusters = math.random(3, 5)
-    local clusters = {}
-    for _ = 1, num_clusters do
-        local ccx = math.random(C.WALL_WIDTH + 30, world_w - C.WALL_WIDTH - 30)
-        local size = math.random(2, 4)
-        table.insert(clusters, {x = ccx, size = size})
+    -- Safe zone: no trees near entrance
+    local safe_min_x = C.WALL_WIDTH + C.ENTRANCE_DOOR_W + C.SAFE_ZONE_W
+
+    -- Progressive density: sparse near entrance, dense toward far end
+    local placed = {}  -- {x, ...}
+    local max_x = world_w - C.WALL_WIDTH - 12
+    local range = max_x - safe_min_x
+
+    -- How close together trees can be, based on map progress (0=entrance, 1=far end)
+    local function min_gap_at(x)
+        local progress = math.max(0, math.min(1, (x - safe_min_x) / range))
+        -- 35px gap near entrance, down to 10px at far end
+        return 35 - 25 * progress
     end
 
-    for _, cluster in ipairs(clusters) do
-        for _ = 1, cluster.size do
-            local spread = 8 + cluster.size * 3
-            local tx = cluster.x + (math.random() - 0.5) * spread * 2
-            local size_hint
-            local rr = math.random()
-            if rr < 0.30 then size_hint = "small"
-            elseif rr < 0.65 then size_hint = "medium"
-            else size_hint = "large"
-            end
-            place_tree(tx, size_hint)
+    local function is_too_close(x)
+        local gap = min_gap_at(x)
+        for _, px in ipairs(placed) do
+            if math.abs(x - px) < gap then return true end
         end
+        return false
     end
 
-    local num_lone = math.random(2, 4)
-    for _ = 1, num_lone do
-        local tx = math.random(C.WALL_WIDTH + 12, world_w - C.WALL_WIDTH - 12)
-        local size_hint
+    local function pick_size(progress)
+        -- Bias toward larger trees further into the map
         local rr = math.random()
-        if rr < 0.3 then size_hint = "small"
-        elseif rr < 0.7 then size_hint = "medium"
-        else size_hint = "large"
+        local large_chance = 0.15 + 0.35 * progress  -- 15% → 50%
+        local small_chance = 0.35 - 0.20 * progress  -- 35% → 15%
+        if rr < small_chance then return "small"
+        elseif rr < (1 - large_chance) then return "medium"
+        else return "large"
         end
-        place_tree(tx, size_hint)
+    end
+
+    -- Place trees across the map with increasing density
+    -- Divide map into zones, place more trees per zone as x increases
+    local num_zones = 6
+    local zone_w = range / num_zones
+    for zone = 0, num_zones - 1 do
+        local zone_start = safe_min_x + zone * zone_w
+        local zone_end = zone_start + zone_w
+        local progress = (zone + 0.5) / num_zones  -- 0..1
+        local is_dense = (zone >= num_zones - 2)
+
+        local tree_count, cluster_chance, extras_max, dense_gap
+        if is_dense then
+            -- Last 2 zones: wall-to-wall forest
+            tree_count    = math.random(14, 20)
+            cluster_chance = 0.90
+            extras_max    = 3
+            dense_gap     = 6
+        else
+            local base_count = math.floor(2 + progress * 5)
+            tree_count     = base_count + math.random(0, math.floor(1 + progress * 2))
+            cluster_chance = 0.15 + 0.35 * progress
+            extras_max     = progress > 0.5 and 2 or 1
+            dense_gap      = nil
+        end
+
+        local function can_place(x)
+            local gap = dense_gap or min_gap_at(x)
+            for _, px in ipairs(placed) do
+                if math.abs(x - px) < gap then return false end
+            end
+            return true
+        end
+
+        local zone_attempts = 0
+        local zone_placed = 0
+        while zone_placed < tree_count and zone_attempts < 150 do
+            zone_attempts = zone_attempts + 1
+            local tx = math.random(math.floor(zone_start), math.floor(zone_end))
+            tx = math.max(safe_min_x, math.min(max_x, tx))
+            if can_place(tx) then
+                place_tree(tx, pick_size(progress))
+                table.insert(placed, tx)
+                zone_placed = zone_placed + 1
+
+                if math.random() < cluster_chance then
+                    local n = math.random(1, extras_max)
+                    for _ = 1, n do
+                        local spread = is_dense and math.random(6, 12) or math.random(10, 18)
+                        local pair_tx = tx + spread * (math.random() < 0.5 and -1 or 1)
+                        pair_tx = math.max(safe_min_x, math.min(max_x, pair_tx))
+                        if can_place(pair_tx) then
+                            place_tree(pair_tx, pick_size(progress))
+                            table.insert(placed, pair_tx)
+                        end
+                    end
+                end
+            end
+        end
     end
 
     table.sort(world.trees, function(a, b) return a.depth < b.depth end)

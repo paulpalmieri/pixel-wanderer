@@ -4,6 +4,7 @@
 -- Returns axe anchor position for draw_axe()
 
 local palette = require("core.palette")
+local C       = require("core.const")
 local anim    = require("gen.anim")
 
 local set_color  = palette.set_color
@@ -57,6 +58,39 @@ function M.draw_player(world)
     local py = math.floor(player.y + 0.5)
     local facing = player.facing
     local body_w = sprite.body_w
+
+    -- Elevator door clipping: during entrance animation, only show player through door gap
+    local entrance_clip = not world.entrance_anim_done and (world.door_state == "closed" or world.door_state == "opening" or world.door_state == "walk_in")
+    if entrance_clip then
+        local cam_ix = math.floor(world.camera_x + 0.5)
+        local cam_iy = math.floor(world.camera_y + 0.5)
+        local door_left = C.WALL_WIDTH
+        local door_w = C.ENTRANCE_DOOR_W
+        local door_h = 20
+        local door_top = world.ground.base_y - door_h
+        local half_w = math.floor(door_w / 2)
+        local open_amount = world.door_open_amount or 0
+        local slide = math.floor(half_w * open_amount)
+
+        -- Gap in canvas space (untransformed)
+        local gap_left = door_left + half_w - slide - cam_ix
+        local gap_top = door_top - cam_iy
+
+        if open_amount >= 1.0 then
+            -- Door fully open: clip from door left edge to end of screen, full height
+            local clip_left = door_left - cam_ix
+            love.graphics.setScissor(clip_left, 0, C.GAME_W - clip_left, C.GAME_H)
+        else
+            local gap_right = door_left + half_w + slide - cam_ix
+            local gap_w = gap_right - gap_left
+            if gap_w > 0 then
+                love.graphics.setScissor(gap_left, gap_top, gap_w, door_h)
+            else
+                -- Door fully closed — don't draw player at all
+                love.graphics.setScissor(0, 0, 0, 0)
+            end
+        end
+    end
 
     -- Center the body in the 16px bounding box
     local body_offset_x = math.floor((16 - body_w) / 2)
@@ -153,6 +187,11 @@ function M.draw_player(world)
     local axe_y = base_y + near_arm.anchor_y + arm_ody + hand_dy
 
     -- Axe follows arm position exactly — no separate bob timer
+    -- Reset entrance clip scissor
+    if entrance_clip then
+        love.graphics.setScissor()
+    end
+
     return {
         hand_x = axe_x,
         hand_y = axe_y,
@@ -166,6 +205,35 @@ function M.draw_axe(world, result)
     local player = world.player
     local dir = player.facing
     local swing = player.axe_swing
+
+    -- Elevator door clipping for axe too
+    local entrance_clip = not world.entrance_anim_done and (world.door_state == "closed" or world.door_state == "opening" or world.door_state == "walk_in")
+    if entrance_clip then
+        local cam_ix = math.floor(world.camera_x + 0.5)
+        local cam_iy = math.floor(world.camera_y + 0.5)
+        local door_left = C.WALL_WIDTH
+        local door_w = C.ENTRANCE_DOOR_W
+        local door_h = 20
+        local door_top = world.ground.base_y - door_h
+        local half_w = math.floor(door_w / 2)
+        local open_amount = world.door_open_amount or 0
+        local slide = math.floor(half_w * open_amount)
+        local gap_left = door_left + half_w - slide - cam_ix
+        local gap_top = door_top - cam_iy
+
+        if open_amount >= 1.0 then
+            local clip_left = door_left - cam_ix
+            love.graphics.setScissor(clip_left, 0, C.GAME_W - clip_left, C.GAME_H)
+        else
+            local gap_right = door_left + half_w + slide - cam_ix
+            local gap_w = gap_right - gap_left
+            if gap_w > 0 then
+                love.graphics.setScissor(gap_left, gap_top, gap_w, door_h)
+            else
+                love.graphics.setScissor(0, 0, 0, 0)
+            end
+        end
+    end
 
     local hx = result.hand_x
     local hy = result.hand_y
@@ -367,6 +435,11 @@ function M.draw_axe(world, result)
     for _, ap in ipairs(axe_pixels) do
         set_color(ap[3])
         draw_pixel(ap[1], ap[2])
+    end
+
+    -- Reset entrance clip scissor
+    if entrance_clip then
+        love.graphics.setScissor()
     end
 end
 
