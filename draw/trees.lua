@@ -101,15 +101,8 @@ function M.draw_trees(cam_ix, cam_iy, world)
                 local c = tree.grid[ty][tx]
                 if c ~= 0 then
                     if flash_alpha > 0 then
-                        -- Lerp palette color toward white
-                        local base = PAL[c]
-                        local fa = flash_alpha * 0.7
-                        love.graphics.setColor(
-                            base[1] + (1 - base[1]) * fa,
-                            base[2] + (1 - base[2]) * fa,
-                            base[3] + (1 - base[3]) * fa,
-                            1
-                        )
+                        -- Strict: use solid highlight color (white)
+                        set_color(20)
                     else
                         set_color(c)
                     end

@@ -4,6 +4,8 @@
 -- Core
 local C         = require("core.const")
 local world_mod = require("core.world")
+local palette   = require("core.palette")
+local PAL       = palette.PAL
 
 -- Generators
 local gen_char  = require("gen.character")
@@ -280,8 +282,9 @@ function love.draw()
     local cam_ix = math.floor(world.camera_x + 0.5)
     local cam_iy = math.floor(world.camera_y + 0.5)
 
-    -- Clear to black (for letterbox bars if aspect doesn't match exactly)
-    love.graphics.clear(0, 0, 0, 1)
+    -- Clear to sky blue
+    local bg = PAL[11]
+    love.graphics.clear(bg[1], bg[2], bg[3], 1)
 
     -- Apply global scale transform
     love.graphics.push()
@@ -305,7 +308,8 @@ function love.draw()
 
     love.graphics.setCanvas()
     love.graphics.pop()
-    love.graphics.setColor(1, 1, 1)
+    local white = PAL[20]
+    love.graphics.setColor(white[1], white[2], white[3])
     love.graphics.draw(world.canvas, 0, 0, 0, PIXEL, PIXEL)
 
     -- Pass 2.5: Trees (direct to virtual screen at PIXEL scale for sub-pixel bend)
@@ -329,7 +333,8 @@ function love.draw()
 
     love.graphics.setCanvas()
     love.graphics.pop()
-    love.graphics.setColor(1, 1, 1)
+    local white = PAL[20]
+    love.graphics.setColor(white[1], white[2], white[3])
     love.graphics.draw(world.canvas, 0, 0, 0, PIXEL, PIXEL)
 
     -- Pass 4: HUD (virtual screen-space) — also handles gameover/skilltree screens

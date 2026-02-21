@@ -30,11 +30,11 @@ local function raster_trunk(grid, x1, y1, x2, y2, w1, w2, gw, gh)
                 local noise = math.sin(gx * 1.8 + gy * 0.4) * 0.15 + math.cos(gx * 0.5) * 0.1
                 local bark = frac + noise
                 if bark < 0.25 then
-                    grid[gy][gx] = 18 -- light wood
+                    grid[gy][gx] = 6 -- light wood (Warm Gold)
                 elseif bark > 0.80 then
-                    grid[gy][gx] = 15 -- dark bark
+                    grid[gy][gx] = 2  -- dark bark (Dark Brown)
                 else
-                    grid[gy][gx] = 16 -- mid brown
+                    grid[gy][gx] = 5 -- mid brown (Burnt Orange)
                 end
             end
         end
@@ -67,13 +67,13 @@ local function raster_foliage(grid, bcx, bcy, rx, ry, gw, gh)
                 shade = shade + leaf_noise
                 
                 if shade < -0.15 then
-                    grid[y][x] = 36 -- Highlight
+                    grid[y][x] = 7  -- Highlight (Olive Green)
                 elseif shade < 0.30 then
-                    grid[y][x] = 17 -- Mid-light
+                    grid[y][x] = 8  -- Mid-light (Forest Green)
                 elseif shade < 0.70 then
-                    grid[y][x] = 7  -- Core shadow
+                    grid[y][x] = 10 -- Core shadow (Dark Teal Blue)
                 else
-                    grid[y][x] = 8  -- Deep shadow
+                    grid[y][x] = 9  -- Deep shadow (Dark Olive)
                 end
             end
         end

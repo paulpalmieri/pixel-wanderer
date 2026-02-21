@@ -240,13 +240,14 @@ function M.draw_axe(world, result)
     local d = dir
 
     -- Color constants
-    local HANDLE_DARK = 15    -- dark bark
-    local HANDLE_LIGHT = 16   -- light bark
-    local HANDLE_HI = 18      -- wood highlight
-    local BLADE_INNER = 20    -- steel mid
-    local BLADE_OUTER = 19    -- steel hi
-    local BLADE_EDGE = 21     -- steel shadow
-    local SMEAR = 14          -- white flash for motion smear
+    -- Color constants
+    local HANDLE_DARK = 16    -- dark (Dark Violet Black)
+    local HANDLE_LIGHT = 5    -- light (Burnt Orange)
+    local HANDLE_HI = 6       -- wood highlight (Warm Gold)
+    local BLADE_INNER = 19    -- steel mid (Light Gray)
+    local BLADE_OUTER = 20    -- steel hi (Warm White)
+    local BLADE_EDGE  = 16    -- steel shadow (Dark Violet Black)
+    local SMEAR       = 20    -- Warm White for motion smear
 
     local axe_pixels = {}
     if swing <= 0.0 then

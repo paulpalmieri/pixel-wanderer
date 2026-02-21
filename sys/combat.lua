@@ -55,7 +55,7 @@ function M.hit_tree(world, entity, tree)
             vy = i * 4,
             life = life,
             max_life = life,
-            color = ({19, 19, 14})[math.random(1, 3)],
+            color = ({12, 12, 11})[math.random(1, 3)], -- Impact (Sage Teal/Steel Blue)
         })
     end
     -- Sparks (more on crit)
@@ -69,7 +69,7 @@ function M.hit_tree(world, entity, tree)
             vy = (math.random() - 0.5) * 60,
             life = life,
             max_life = life,
-            color = ({19, 14, 18})[math.random(1, 3)],
+            color = ({12, 20, 6})[math.random(1, 3)], -- Sparks (Sage Teal, Warm White, Warm Gold)
         })
     end
 
@@ -86,7 +86,7 @@ function M.hit_tree(world, entity, tree)
             vy = -math.random(15, 45),
             life = life,
             max_life = life,
-            color = ({7, 8, 17, 36})[math.random(1, 4)],
+            color = ({9, 7, 8, 7})[math.random(1, 4)], -- Leaves (Dark Olive, Olive Green, Forest Green)
         })
     end
 
@@ -130,7 +130,7 @@ function M.hit_tree(world, entity, tree)
                 vy = -math.random(10, 30),
                 life = life,
                 max_life = life,
-                color = ({15, 16, 18})[math.random(1, 3)],
+                color = ({2, 5, 6})[math.random(1, 3)], -- Wood splinters (Dark Brown, Burnt Orange, Warm Gold)
             })
         end
 
@@ -145,7 +145,7 @@ function M.hit_tree(world, entity, tree)
                 vy = -math.random(10, 40),
                 life = life,
                 max_life = life,
-                color = ({7, 8, 17, 36})[math.random(1, 4)],
+                color = ({9, 7, 8, 7})[math.random(1, 4)], -- Leaves (Dark Olive, Olive Green, Forest Green)
             })
         end
     end
@@ -231,7 +231,7 @@ function M.update(dt, world)
                     vy = -math.random(5, 20),
                     life = life,
                     max_life = life,
-                    color = ({7, 8, 17, 36})[math.random(1, 4)],
+                    color = ({9, 7, 8, 7})[math.random(1, 4)], -- Leaves (Dark Olive, Olive Green, Forest Green)
                 })
             end
 
@@ -277,10 +277,10 @@ function M.update(dt, world)
                             vy = -math.random(5, 15), -- Rises slowly
                             life = life,
                             max_life = life,
-                            color = ({33, 34, 35, 15})[math.random(1, 4)], -- dirt and bark colors
+                            color = ({5, 2, 3, 18})[math.random(1, 4)], -- dirt and bark colors
                         })
                     end
-                    
+
                     -- Big, thick dust poof at the exact impact point
                     for _ = 1, math.max(8, math.floor(tree.h / 3)) do
                         local life = 0.8 + math.random() * 0.5
@@ -291,7 +291,7 @@ function M.update(dt, world)
                             vy = -math.random(10, 20),
                             life = life,
                             max_life = life,
-                            color = ({33, 34, 35, 15})[math.random(1, 4)],
+                            color = ({5, 2, 3, 18})[math.random(1, 4)],
                         })
                     end
 
@@ -307,7 +307,7 @@ function M.update(dt, world)
                             vy = -math.random(20, 60),
                             life = life,
                             max_life = life,
-                            color = ({7, 8, 17, 36})[math.random(1, 4)],
+                            color = ({7, 8, 9, 2})[math.random(1, 4)],
                         })
                     end
                 else
@@ -328,7 +328,7 @@ function M.update(dt, world)
                                 vy = -math.random(5, 15),
                                 life = 0.3 + math.random() * 0.2,
                                 max_life = 0.5,
-                                color = ({33, 34, 35})[math.random(1, 3)],
+                                color = ({5, 2, 3})[math.random(1, 3)],
                             })
                         end
                     else

@@ -80,16 +80,21 @@ function M.generate_cloud_textures(world)
     local TILE_W = 200
     local TILE_H = 60
 
+    -- 3 layers: far (subtle, slow), mid, near (bright, fast)
     local configs = {
-        {num = 8, speed = 0.04, parallax = 0.04, colors = {4, 3, 2}, y_min = 4, y_max = 26, alpha = 0.35},
-        {num = 6, speed = 0.07, parallax = 0.06, colors = {6, 5, 3}, y_min = 4, y_max = 33, alpha = 0.45},
+        -- Far: small, sparse, tinted with sky — barely visible wisps
+        {num = 10, speed = 0.02, parallax = 0.02, colors = {11, 10, 16},
+         y_min = 2, y_max = 20, alpha = 0.4, cloud_w = {8, 14}, cloud_h = {5, 8}},
+        -- Near: large, bright, warm-white highlights
+        {num = 5, speed = 0.09, parallax = 0.08, colors = {20, 19, 18},
+         y_min = 6, y_max = 35, alpha = 0.8, cloud_w = {16, 26}, cloud_h = {9, 14}},
     }
 
     for i, cfg in ipairs(configs) do
         local cw = TILE_W * PIXEL
         local ch = TILE_H * PIXEL
         local tex = love.graphics.newCanvas(cw, ch)
-        tex:setFilter("linear", "linear")
+        tex:setFilter("nearest", "nearest")
         tex:setWrap("repeat", "clampzero")
 
         love.graphics.setCanvas(tex)
@@ -101,8 +106,8 @@ function M.generate_cloud_textures(world)
 
         local spacing = TILE_W / cfg.num
         for n = 1, cfg.num do
-            local w = math.random(12, 22)
-            local h = math.random(7, 11)
+            local w = math.random(cfg.cloud_w[1], cfg.cloud_w[2])
+            local h = math.random(cfg.cloud_h[1], cfg.cloud_h[2])
             local pixels = M.generate_cloud_shape(w, h)
             local cx = math.floor((n - 1) * spacing + math.random(0, math.floor(spacing * 0.6)))
             local cy = math.random(cfg.y_min, cfg.y_max)
@@ -110,11 +115,11 @@ function M.generate_cloud_textures(world)
             for _, p in ipairs(pixels) do
                 local shade = p[3]
                 if shade == 0 then
-                    love.graphics.setColor(pal_h[1], pal_h[2], pal_h[3])
+                    love.graphics.setColor(pal_h[1], pal_h[2], pal_h[3], 1.0)
                 elseif shade == 2 then
-                    love.graphics.setColor(pal_s[1], pal_s[2], pal_s[3])
+                    love.graphics.setColor(pal_s[1], pal_s[2], pal_s[3], 1.0)
                 else
-                    love.graphics.setColor(pal_b[1], pal_b[2], pal_b[3])
+                    love.graphics.setColor(pal_b[1], pal_b[2], pal_b[3], 1.0)
                 end
                 local px = ((cx + p[1]) % TILE_W) * PIXEL
                 local py = (cy + p[2]) * PIXEL

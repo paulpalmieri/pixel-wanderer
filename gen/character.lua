@@ -8,21 +8,29 @@ local M = {}
 -- Color palettes: each set creates a cohesive robot look
 -- 4 colors only: {body_hi, body_mid, body_lo, eye}
 local PALETTES = {
-    { -- Dusty Sage
-        name = "sage",
-        body_hi = 49, body_mid = 50, body_lo = 51, eye = 52,
+    { -- Brushed Steel (Clean)
+        name = "brushed_steel",
+        body_hi = 20, body_mid = 19, body_lo = 18, eye = 12,
     },
-    { -- Warm Clay
-        name = "clay",
-        body_hi = 53, body_mid = 54, body_lo = 55, eye = 56,
+    { -- Dark Iron (Heavy)
+        name = "dark_iron",
+        body_hi = 19, body_mid = 10, body_lo = 16, eye = 13,
     },
-    { -- Lavender Steel
-        name = "lavender",
-        body_hi = 57, body_mid = 58, body_lo = 59, eye = 60,
+    { -- Industrial (Amber/Rust details)
+        name = "industrial",
+        body_hi = 20, body_mid = 6, body_lo = 5, eye = 12,
     },
-    { -- Pale Sky
-        name = "sky",
-        body_hi = 61, body_mid = 62, body_lo = 63, eye = 64,
+    { -- Cobalt Steel (Toned)
+        name = "cobalt_steel",
+        body_hi = 12, body_mid = 11, body_lo = 10, eye = 20,
+    },
+    { -- Rust Red (Weathered)
+        name = "rust_red",
+        body_hi = 13, body_mid = 4, body_lo = 3, eye = 6,
+    },
+    { -- Plum Night (Dark)
+        name = "plum_night",
+        body_hi = 13, body_mid = 14, body_lo = 15, eye = 12,
     },
 }
 
@@ -72,7 +80,9 @@ end
 local function make_arm(h, pal)
     local pixels = {}
     for row = 0, h - 1 do
-        table.insert(pixels, {dx = 0, dy = row, c = pal.body_hi})
+        local color = pal.body_mid
+        if row == 0 then color = pal.body_hi end
+        table.insert(pixels, {dx = 0, dy = row, c = color})
     end
     return pixels
 end

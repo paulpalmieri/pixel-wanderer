@@ -32,11 +32,11 @@ function M.draw_ground(cam_ix, cam_iy, world)
             -- occasional surface-shadow specks and a rare dirt-light pebble.
             local h = hash2(wx, base_y)
             if h < 0.12 then
-                set_color(33) -- dirt light pebble
+                set_color(5) -- dirt light pebble (Burnt Orange)
             elseif h < 0.30 then
-                set_color(32) -- surface shadow
+                set_color(10) -- surface shadow (Dark Teal Blue)
             else
-                set_color(31) -- surface bright (dominant)
+                set_color(8) -- surface bright (Forest Green)
             end
             draw_pixel(wx, base_y)
 
@@ -54,25 +54,25 @@ function M.draw_ground(cam_ix, cam_iy, world)
                 if strata then
                     -- thin darker band to mimic soil compression lines
                     if n < 0.40 then
-                        set_color(35) -- dirt dark
+                        set_color(2)  -- dirt dark (Dark Brown)
                     else
-                        set_color(34) -- dirt mid
+                        set_color(3)  -- dirt mid (Deep Red Brown)
                     end
                 elseif dy <= 3 then
                     -- sub-surface transition: mix surface bright into the mid dirt
                     if n < 0.20 then
-                        set_color(31) -- echoed surface bright
+                        set_color(8)  -- echoed surface bright (Forest Green)
                     elseif n < 0.50 then
-                        set_color(34) -- dirt mid
+                        set_color(3)  -- dirt mid (Deep Red Brown)
                     else
-                        set_color(35) -- dirt dark
+                        set_color(2)  -- dirt dark (Dark Brown)
                     end
                 else
-                    -- Deep earth: mostly dark, with occasional dirt-mid vein
+                    -- Deep earth: mostly dark, with occasional stone veins
                     if n < 0.22 then
-                        set_color(34) -- dirt mid vein
+                        set_color(17) -- stone vein (Charcoal)
                     else
-                        set_color(35) -- dirt dark (dominant)
+                        set_color(16) -- dirt dark (dominant - Dark Violet Black)
                     end
                 end
                 draw_pixel(wx, wy)
@@ -94,20 +94,20 @@ function M.draw_walls(cam_ix, cam_iy, world)
                     brick_col = (wx + 2) % 4
                 end
                 if brick_row == 0 or brick_col == 0 then
-                    set_color(35)
+                    set_color(17) -- Mortar lines (Charcoal)
                 else
                     if (wy + wx) % 7 < 3 then
-                        set_color(33)
+                        set_color(5)  -- Light brick (Burnt Orange)
                     else
-                        set_color(34)
+                        set_color(3)  -- Mid brick (Deep Red Brown)
                     end
                 end
                 draw_pixel(wx, wy)
             end
             if (wx % 3 ~= 0) then
-                set_color(35)
+                set_color(17) -- Wall cap (Charcoal)
             else
-                set_color(8)
+                set_color(7)  -- Moss check (Olive Green)
             end
             draw_pixel(wx, wall_top - 1)
         end
@@ -131,14 +131,14 @@ function M.draw_walls(cam_ix, cam_iy, world)
     local slide = math.floor(half_w * open_amount)
 
     -- ── Door frame ──────────────────────────────────────────────
-    -- Top bar: darkest shade for depth
+    -- Inner frame depth
     for dx = -1, door_w do
-        set_color(21) -- steel shadow (dark frame)
+        set_color(16) -- deep void top (Dark Violet Black)
         draw_pixel(door_left + dx, door_top - 1)
     end
-    -- Side pillars
+    -- Side pillars: use core steel color with shadow
     for dy = 0, door_h - 1 do
-        set_color(21) -- steel shadow
+        set_color(10) -- steel pillar shadow (Dark Teal Blue)
         draw_pixel(door_left - 1, door_top + dy)
         draw_pixel(door_left + door_w, door_top + dy)
     end
@@ -160,22 +160,27 @@ function M.draw_walls(cam_ix, cam_iy, world)
             local dx = px - px_start
             local wx = door_left + px
 
-            if dy <= 1 then
-                set_color(19) -- top bevel hi
-            elseif dy >= door_h - 2 then
-                set_color(21) -- bot bevel shd
+            if dy == 0 then
+                set_color(20) -- top edge specular (Warm White)
+            elseif dy <= 1 then
+                set_color(19) -- top bevel mid (Light Gray)
+            elseif dy >= door_h - 1 then
+                set_color(16) -- bottom recess (Dark Violet Black)
             elseif dx == 0 then
-                set_color(19) -- left bevel hi
+                set_color(20) -- left edge specular
             elseif dx == pw - 1 then
-                set_color(21) -- right bevel shd
+                set_color(10) -- right edge shadow
             else
-                -- Heavy horizontal ribs
-                if (dy % 4) == 0 then
-                    set_color(21) -- recess
-                elseif (dy % 4) == 1 then
-                    set_color(19) -- ridge hi
+                -- Vertical banded "brushed" effect
+                local noise = hash2(wx, wy * 13)
+                if (dy % 5) == 0 then
+                    set_color(10) -- panel groove (Dark Teal Blue)
+                elseif noise < 0.2 then
+                    set_color(20)  -- specular fleck (Warm White)
+                elseif noise < 0.6 then
+                    set_color(19)  -- primary steel (Light Gray)
                 else
-                    set_color(20) -- flat
+                    set_color(18)  -- shaded steel (Warm Gray)
                 end
             end
 
@@ -200,7 +205,7 @@ function M.draw_walls(cam_ix, cam_iy, world)
 
         -- Central seam (dark gap between panels)
         if slide == 0 then
-            set_color(21)
+            set_color(10) -- Seam (Dark Teal Blue)
             draw_pixel(door_left + half_w - 1, door_top + dy)
         end
     end
@@ -211,7 +216,7 @@ function M.draw_walls(cam_ix, cam_iy, world)
         local gap_right = door_left + half_w + slide - 1
         for dy = 0, door_h - 1 do
             for gx = gap_left, gap_right do
-                set_color(9) -- void dark
+                set_color(16) -- void dark (Dark Violet Black)
                 draw_pixel(gx, door_top + dy)
             end
         end
@@ -228,7 +233,7 @@ function M.draw_walls(cam_ix, cam_iy, world)
     -- Button housing (dark metal)
     for dy = -1, btn_h do
         for dx = -1, btn_w do
-            set_color(21)
+            set_color(10) -- Dark Teal Blue
             draw_pixel(btn_x + dx, btn_y + dy)
         end
     end
@@ -238,9 +243,9 @@ function M.draw_walls(cam_ix, cam_iy, world)
     for dy = 0, btn_h - 1 do
         for dx = 0, btn_w - 1 do
             if can_afford then
-                set_color(36) -- bright leaf (green-ish)
+                set_color(7)  -- bright green (Olive Green)
             else
-                set_color(45) -- red eye
+                set_color(13) -- mute red (Dusty Rose)
             end
             draw_pixel(btn_x + dx, btn_y + dy)
         end
@@ -248,9 +253,9 @@ function M.draw_walls(cam_ix, cam_iy, world)
 
     -- Tiny highlight on button
     if can_afford then
-        set_color(17) -- forest highlight
+        set_color(8)  -- Forest Green highlight
     else
-        set_color(18) -- wood highlight
+        set_color(13) -- Dusty Rose highlight
     end
     draw_pixel(btn_x, btn_y)
 

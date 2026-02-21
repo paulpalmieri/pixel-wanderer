@@ -13,20 +13,20 @@ local M = {}
 
 -- Same 4x4 chunk pixel map used in draw/entities.lua
 local chunk_map = {
-    {  0, 16, 16,  0 },
-    { 16, 18, 18, 16 },
-    { 15, 18, 18, 15 },
-    {  0, 15, 15,  0 },
+    {  0,  5,  5,  0 },
+    {  5,  6,  6,  5 },
+    {  2,  6,  6,  2 },
+    {  0,  2,  2,  0 },
 }
 
 -- Draw a wood chunk at screen position (x, y) with pixel size s and alpha
-local function draw_chunk(x, y, s, alpha)
+local function draw_chunk(x, y, s)
     for dy = 1, 4 do
         for dx = 1, 4 do
             local col = chunk_map[dy][dx]
             if col ~= 0 then
                 local c = PAL[col]
-                love.graphics.setColor(c[1], c[2], c[3], alpha)
+                love.graphics.setColor(c[1], c[2], c[3], 1.0)
                 love.graphics.rectangle("fill", x + (dx-1)*s, y + (dy-1)*s, s, s)
             end
         end
@@ -39,68 +39,59 @@ local function ease_out(t)
     return 1 - t1 * t1 * t1
 end
 
--- Lerp between two colors given t in [0,1]
-local function lerp_color(r1, g1, b1, r2, g2, b2, t)
-    return r1 + (r2 - r1) * t, g1 + (g2 - g1) * t, b1 + (b2 - b1) * t
-end
 
 -- ============================================================
 -- BATTERY BAR
 -- ============================================================
 function M.draw_battery(world)
-    local SCREEN_W = GAME_W * PIXEL
-    local SCREEN_H = GAME_H * PIXEL
-
-    -- Base battery duration = 10 + upgrade bonus
     local max_battery = 10 + (world.upgrades and world.upgrades.battery_bonus or 0)
     local frac = math.max(0, math.min(1, world.battery / max_battery))
 
-    -- Position at top-left with a bit of padding
-    local bx = 10
-    local by = 10
-    local bar_w = 60   -- pixels in virtual screen space
-    local bar_h = 8
-    -- little nub on the right like a real battery
-    local nub_w = 4
-    local nub_h = 4
+    local bx, by = 10, 10
+    local bar_w, bar_h = 60, 8
+    local nub_w, nub_h = 4, 4
 
-    -- Background (dark shell)
-    love.graphics.setColor(0.1, 0.1, 0.1, 0.85)
+    -- Background (solid shell)
+    local bg = PAL[16]
+    love.graphics.setColor(bg[1], bg[2], bg[3], 1.0)
     love.graphics.rectangle("fill", bx - 2, by - 2, bar_w + nub_w + 4, bar_h + 4)
 
     -- Battery nub
-    love.graphics.setColor(0.25, 0.25, 0.25, 0.9)
+    local nub = PAL[16]
+    love.graphics.setColor(nub[1], nub[2], nub[3], 1.0)
     love.graphics.rectangle("fill", bx + bar_w + 2, by + (bar_h - nub_h) / 2, nub_w, nub_h)
 
-    -- Fill color: green -> yellow -> red
+    -- Color selection (hard thresholds, no lerp)
     local r, g, b
-    if frac > 0.5 then
-        -- green → yellow
-        local t = 1 - (frac - 0.5) * 2
-        r, g, b = lerp_color(0.15, 0.90, 0.25, 0.95, 0.85, 0.10, t)
+    local color
+    if frac > 0.6 then
+        color = PAL[8] -- Forest Green
+    elseif frac > 0.25 then
+        color = PAL[6] -- Warm Gold
     else
-        -- yellow → red
-        local t = 1 - frac * 2
-        r, g, b = lerp_color(0.95, 0.85, 0.10, 0.95, 0.18, 0.10, t)
+        color = PAL[4] -- Brick Red
     end
-
-    -- Pulse when critically low (<= 20%)
-    local alpha = 1.0
+    
+    -- Pulse (binary state for strict palette)
+    local visible = true
     if frac <= 0.2 then
-        alpha = 0.6 + 0.4 * math.abs(math.sin(love.timer.getTime() * 8))
+        visible = (math.floor(love.timer.getTime() * 8) % 2 == 0)
     end
 
-    -- Filled portion
-    local fill_w = math.max(0, math.floor(bar_w * frac))
-    love.graphics.setColor(r, g, b, alpha)
-    love.graphics.rectangle("fill", bx, by, fill_w, bar_h)
+    if visible then
+        local fill_w = math.max(0, math.floor(bar_w * frac))
+        love.graphics.setColor(color[1], color[2], color[3], 1.0)
+        love.graphics.rectangle("fill", bx, by, fill_w, bar_h)
 
-    -- Glossy highlight strip
-    love.graphics.setColor(1, 1, 1, 0.12 * alpha)
-    love.graphics.rectangle("fill", bx, by, fill_w, 2)
+        -- Highlight (solid, no alpha)
+        local white = PAL[20]
+        love.graphics.setColor(white[1], white[2], white[3], 1.0)
+        love.graphics.rectangle("fill", bx, by, fill_w, 1)
+    end
 
     -- BATT label
-    love.graphics.setColor(0.8, 0.8, 0.8, 0.7)
+    local lbl = PAL[19]
+    love.graphics.setColor(lbl[1], lbl[2], lbl[3], 1.0)
     local stime = string.format("%.0fs", math.max(0, world.battery))
     love.graphics.print(stime, bx + bar_w + nub_w + 6, by - 2)
 end
@@ -112,47 +103,52 @@ function M.draw_gameover(world)
     local SCREEN_W = GAME_W * PIXEL
     local SCREEN_H = GAME_H * PIXEL
 
-    -- Darken background overlay
-    love.graphics.setColor(0.02, 0.02, 0.06, 0.82)
+    -- Darken background overlay (solid obsidian black)
+    local bg = PAL[16]
+    love.graphics.setColor(bg[1], bg[2], bg[3], 1.0)
     love.graphics.rectangle("fill", 0, 0, SCREEN_W, SCREEN_H)
 
     -- Panel
-    local pw = 320
-    local ph = 200
+    local pw, ph = 320, 200
     local px = (SCREEN_W - pw) / 2
     local py = (SCREEN_H - ph) / 2
 
-    love.graphics.setColor(0.08, 0.08, 0.14, 0.96)
+    local pnl = PAL[10] -- Dark Teal Blue base
+    love.graphics.setColor(pnl[1], pnl[2], pnl[3], 1.0)
     love.graphics.rectangle("fill", px, py, pw, ph)
-    love.graphics.setColor(0.65, 0.20, 0.15, 0.9)
+    local brd = PAL[19] -- Light Gray border
+    love.graphics.setColor(brd[1], brd[2], brd[3], 1.0)
     love.graphics.setLineWidth(2)
     love.graphics.rectangle("line", px, py, pw, ph)
 
     -- Title: MISSION TERMINATED
-    love.graphics.setColor(0.95, 0.25, 0.15, 1.0)
+    local titl = PAL[20] -- Warm White
+    love.graphics.setColor(titl[1], titl[2], titl[3], 1.0)
     local title = "MISSION TERMINATED"
     local tw = world.font:getWidth(title)
     love.graphics.print(title, px + (pw - tw) / 2, py + 24)
 
     -- Separator line
-    love.graphics.setColor(0.65, 0.20, 0.15, 0.5)
+    local sep = PAL[19]
+    love.graphics.setColor(sep[1], sep[2], sep[3], 1.0)
     love.graphics.setLineWidth(1)
-    love.graphics.line(px + 24, py + 70, px + pw - 24, py + 70)
+    love.graphics.line(px + 48, py + 70, px + pw - 48, py + 70)
 
     -- Wood gathered
-    love.graphics.setColor(0.75, 0.75, 0.75, 0.9)
+    local txt = PAL[19]
+    love.graphics.setColor(txt[1], txt[2], txt[3], 1.0)
     local sub = "Wood gathered this run:"
     local sw = world.font:getWidth(sub)
     love.graphics.print(sub, px + (pw - sw) / 2, py + 82)
 
-    local wc = PAL[13]
+    local wc = PAL[12]
     love.graphics.setColor(wc[1], wc[2], wc[3], 1.0)
     local woodstr = tostring(world.wood_at_game_end)
     local icon_s = 5
     local combined_w = world.font:getWidth(woodstr) + icon_s * 5 + 8
     local icon_x = px + (pw - combined_w) / 2
     local text_x = icon_x + icon_s * 5 + 8
-    draw_chunk(icon_x, py + 115, icon_s, 1.0)
+    draw_chunk(icon_x, py + 115, icon_s)
     love.graphics.setColor(wc[1], wc[2], wc[3], 1.0)
     love.graphics.print(woodstr, text_x, py + 112)
 
@@ -169,16 +165,23 @@ function M.draw_gameover(world)
     local hovered = (gmx >= btn_x and gmx <= btn_x + btn_w and gmy >= btn_y and gmy <= btn_y + btn_h)
 
     if hovered then
-        love.graphics.setColor(0.25, 0.65, 0.95, 1.0)
+        local hov = PAL[12] -- Sage Teal highlight
+        love.graphics.setColor(hov[1], hov[2], hov[3], 1.0)
     else
-        love.graphics.setColor(0.15, 0.40, 0.65, 0.9)
+        local btn = PAL[11] -- Steel Blue
+        love.graphics.setColor(btn[1], btn[2], btn[3], 1.0)
     end
     love.graphics.rectangle("fill", btn_x, btn_y, btn_w, btn_h)
-    love.graphics.setColor(0.45, 0.80, 1.0, 0.6)
-    love.graphics.setLineWidth(1)
-    love.graphics.rectangle("line", btn_x, btn_y, btn_w, btn_h)
+    local brd = PAL[20] -- Bright border on hover/etc actually keep it subtle
+    love.graphics.setColor(1, 1, 1, 0) -- transparent
+    if hovered then
+        love.graphics.setColor(PAL[20][1], PAL[20][2], PAL[20][3], 1.0)
+        love.graphics.setLineWidth(2)
+        love.graphics.rectangle("line", btn_x, btn_y, btn_w, btn_h)
+    end
 
-    love.graphics.setColor(1.0, 1.0, 1.0, 1.0)
+    local white = PAL[20]
+    love.graphics.setColor(white[1], white[2], white[3], 1.0)
     local btxt = "CONTINUE"
     local bw = world.font:getWidth(btxt)
     love.graphics.print(btxt, btn_x + (btn_w - bw) / 2, btn_y + (btn_h - 20) / 2)
@@ -229,7 +232,7 @@ local SKILLS = {
 local function draw_skill_icon(icon, cx, cy, col)
     -- simple 8x8 pixel icons
     if icon == "robot" then
-        love.graphics.setColor(col[1], col[2], col[3], 0.9)
+        love.graphics.setColor(col[1], col[2], col[3], 1.0)
         love.graphics.rectangle("fill", cx - 3, cy - 4, 6, 4) -- head
         love.graphics.rectangle("fill", cx - 2, cy, 4, 3)     -- body
         love.graphics.rectangle("fill", cx - 4, cy, 1, 2)     -- l arm
@@ -237,17 +240,19 @@ local function draw_skill_icon(icon, cx, cy, col)
         love.graphics.rectangle("fill", cx - 2, cy + 3, 1, 2) -- l leg
         love.graphics.rectangle("fill", cx + 1, cy + 3, 1, 2) -- r leg
         -- eye
-        love.graphics.setColor(0.2, 0.8, 1.0, 1.0)
+        local eye = PAL[12]
+        love.graphics.setColor(eye[1], eye[2], eye[3], 1.0)
         love.graphics.rectangle("fill", cx - 1, cy - 3, 2, 1)
     elseif icon == "battery" then
-        love.graphics.setColor(col[1], col[2], col[3], 0.9)
+        love.graphics.setColor(col[1], col[2], col[3], 1.0)
         love.graphics.rectangle("fill", cx - 4, cy - 2, 8, 4)
         love.graphics.rectangle("fill", cx + 4, cy - 1, 1, 2) -- nub
         -- green fill (partial)
-        love.graphics.setColor(0.2, 0.9, 0.3, 0.8)
+        local fill = PAL[8]
+        love.graphics.setColor(fill[1], fill[2], fill[3], 1.0)
         love.graphics.rectangle("fill", cx - 3, cy - 1, 5, 2)
     elseif icon == "axe" then
-        love.graphics.setColor(col[1], col[2], col[3], 0.9)
+        love.graphics.setColor(col[1], col[2], col[3], 1.0)
         -- handle
         love.graphics.rectangle("fill", cx, cy - 4, 1, 8)
         -- blade
@@ -259,7 +264,7 @@ local function draw_skill_icon(icon, cx, cy, col)
         }
         love.graphics.polygon("fill", pts)
     elseif icon == "tree" then
-        love.graphics.setColor(col[1], col[2], col[3], 0.9)
+        love.graphics.setColor(col[1], col[2], col[3], 1.0)
         love.graphics.rectangle("fill", cx - 1, cy, 2, 4) -- trunk
         local pts = {
             cx, cy - 4,
@@ -275,23 +280,26 @@ function M.draw_skilltree(world)
     local SCREEN_H = GAME_H * PIXEL
 
     -- Full background
-    love.graphics.setColor(0.04, 0.04, 0.10, 0.96)
+    local bg = PAL[16]
+    love.graphics.setColor(bg[1], bg[2], bg[3], 1.0)
     love.graphics.rectangle("fill", 0, 0, SCREEN_W, SCREEN_H)
 
     -- Header
-    love.graphics.setColor(0.95, 0.80, 0.25, 1.0)
+    local hdr = PAL[6]
+    love.graphics.setColor(hdr[1], hdr[2], hdr[3], 1.0)
     local title = "SKILL TREE"
     local tw = world.font:getWidth(title)
     love.graphics.print(title, (SCREEN_W - tw) / 2, 24)
 
     -- Wood budget
-    local wc = PAL[13]
-    love.graphics.setColor(wc[1], wc[2], wc[3], 0.9)
+    local wc = PAL[12]
+    love.graphics.setColor(wc[1], wc[2], wc[3], 1.0)
     local budget_str = "Wood: " .. tostring(world.player and world.player.wood_count or world.wood_at_game_end)
     love.graphics.print(budget_str, 20, 24)
 
     -- Instruction
-    love.graphics.setColor(0.5, 0.5, 0.5, 0.8)
+    local inst = PAL[19]
+    love.graphics.setColor(inst[1], inst[2], inst[3], 1.0)
     love.graphics.print("Spend wood to unlock upgrades, then Play Again", (SCREEN_W - world.font:getWidth("Spend wood to unlock upgrades, then Play Again")) / 2, 56)
 
     -- Skill tree logic
@@ -322,11 +330,14 @@ function M.draw_skilltree(world)
             local req_owned = p.check(world.upgrades)
             
             if owned then
-                love.graphics.setColor(0.3, 0.85, 0.4, 0.9)
+                local conn = PAL[6] -- Warm Gold
+                love.graphics.setColor(conn[1], conn[2], conn[3], 1.0)
             elseif req_owned then
-                love.graphics.setColor(0.3, 0.55, 0.85, 0.5)
+                local conn = PAL[12] -- Sage Teal (Available)
+                love.graphics.setColor(conn[1], conn[2], conn[3], 1.0)
             else
-                love.graphics.setColor(0.25, 0.25, 0.30, 0.4)
+                local conn = PAL[10] -- Dark Teal Blue (Locked)
+                love.graphics.setColor(conn[1], conn[2], conn[3], 1.0)
             end
             
             love.graphics.line(x1, y1, x2, y2)
@@ -369,31 +380,39 @@ function M.draw_skilltree(world)
         
         -- Node background
         if owned then
-            love.graphics.setColor(0.08, 0.28, 0.12, 0.95)
+            local nbg = PAL[19] -- Light Gray for owned
+            love.graphics.setColor(nbg[1], nbg[2], nbg[3], 1.0)
         elseif hovered and affordable then
-            love.graphics.setColor(0.10, 0.20, 0.32, 0.97)
+            local nbg = PAL[12] -- Sage Teal for hover/buy
+            love.graphics.setColor(nbg[1], nbg[2], nbg[3], 1.0)
         elseif req_owned then
-            love.graphics.setColor(0.12, 0.12, 0.16, 0.97)
+            local nbg = PAL[10] -- Dark Teal Blue for available
+            love.graphics.setColor(nbg[1], nbg[2], nbg[3], 1.0)
         else
-            love.graphics.setColor(0.04, 0.04, 0.06, 0.8)
+            local nbg = PAL[16] -- Black for locked
+            love.graphics.setColor(nbg[1], nbg[2], nbg[3], 1.0)
         end
         love.graphics.rectangle("fill", rx, ry, node_s, node_s)
 
         -- Border
         if owned then
-            love.graphics.setColor(0.3, 0.85, 0.4, 0.9)
+            local nbrd = PAL[6]
+            love.graphics.setColor(nbrd[1], nbrd[2], nbrd[3], 1.0)
         elseif affordable then
-            love.graphics.setColor(0.3, 0.55, 0.85, 0.7)
+            local nbrd = PAL[11]
+            love.graphics.setColor(nbrd[1], nbrd[2], nbrd[3], 1.0)
         elseif req_owned then
-            love.graphics.setColor(0.4, 0.4, 0.5, 0.8)
+            local nbrd = PAL[19]
+            love.graphics.setColor(nbrd[1], nbrd[2], nbrd[3], 1.0)
         else
-            love.graphics.setColor(0.15, 0.15, 0.20, 0.6)
+            local nbrd = PAL[10]
+            love.graphics.setColor(nbrd[1], nbrd[2], nbrd[3], 1.0)
         end
         love.graphics.setLineWidth(1)
         love.graphics.rectangle("line", rx, ry, node_s, node_s)
         
         -- Icon
-        local icon_col = owned and {0.3, 0.9, 0.4} or (affordable and {0.6, 0.75, 0.95} or (req_owned and {0.4, 0.4, 0.45} or {0.2, 0.2, 0.2}))
+        local icon_col = owned and PAL[6] or (affordable and PAL[12] or (req_owned and PAL[19] or PAL[16]))
         draw_skill_icon(sk.icon, cx, cy, icon_col)
     end
 
@@ -405,16 +424,21 @@ function M.draw_skilltree(world)
 
     local hovered_btn = (gmx >= btn_x and gmx <= btn_x + btn_w and gmy >= btn_y and gmy <= btn_y + btn_h)
     if hovered_btn then
-        love.graphics.setColor(0.35, 0.85, 0.35, 1.0)
+        local hov = PAL[12] -- Sage Teal highlight
+        love.graphics.setColor(hov[1], hov[2], hov[3], 1.0)
     else
-        love.graphics.setColor(0.18, 0.55, 0.20, 0.9)
+        local btn = PAL[11] -- Steel Blue
+        love.graphics.setColor(btn[1], btn[2], btn[3], 1.0)
     end
     love.graphics.rectangle("fill", btn_x, btn_y, btn_w, btn_h)
-    love.graphics.setColor(0.50, 1.0, 0.55, 0.6)
-    love.graphics.setLineWidth(1)
-    love.graphics.rectangle("line", btn_x, btn_y, btn_w, btn_h)
+    if hovered_btn then
+        love.graphics.setColor(PAL[20][1], PAL[20][2], PAL[20][3], 1.0)
+        love.graphics.setLineWidth(2)
+        love.graphics.rectangle("line", btn_x, btn_y, btn_w, btn_h)
+    end
 
-    love.graphics.setColor(1, 1, 1, 1)
+    local white = PAL[20]
+    love.graphics.setColor(white[1], white[2], white[3], 1.0)
     local btxt = "PLAY AGAIN"
     local bw = world.font:getWidth(btxt)
     love.graphics.print(btxt, btn_x + (btn_w - bw) / 2, btn_y + (btn_h - 20) / 2)
@@ -437,44 +461,50 @@ function M.draw_skilltree(world)
         if tx + tw > SCREEN_W then tx = gmx - tw - 15 end
         if ty + th > SCREEN_H then ty = gmy - th - 15 end
 
-        love.graphics.setColor(0.08, 0.08, 0.14, 0.95)
+        local bg = PAL[16]
+        love.graphics.setColor(bg[1], bg[2], bg[3], 1.0)
         love.graphics.rectangle("fill", tx, ty, tw, th)
-        love.graphics.setColor(0.4, 0.4, 0.5, 0.9)
+        local brd = PAL[19]
+        love.graphics.setColor(brd[1], brd[2], brd[3], 1.0)
         love.graphics.setLineWidth(1)
         love.graphics.rectangle("line", tx, ty, tw, th)
         
         -- Name
-        local col = owned and {0.35, 1.0, 0.5} or (affordable and {0.85, 0.90, 1.0} or {0.5, 0.5, 0.55})
+        local col = owned and PAL[6] or (affordable and PAL[20] or PAL[19])
         love.graphics.setColor(col[1], col[2], col[3], 1.0)
         local nw = world.font:getWidth(sk.name)
         love.graphics.print(sk.name, tx + (tw - nw) / 2, ty + 8)
         
         -- Status / Cost
         if sk.cost == 0 then
-            love.graphics.setColor(0.3, 0.95, 0.4, 1.0)
+            local c = PAL[6]
+            love.graphics.setColor(c[1], c[2], c[3], 1.0)
             local badge = "CORE"
             local bw = world.font:getWidth(badge)
             love.graphics.print(badge, tx + (tw - bw) / 2, ty + 24)
         elseif owned then
-            love.graphics.setColor(0.3, 0.95, 0.4, 1.0)
+            local c = PAL[6]
+            love.graphics.setColor(c[1], c[2], c[3], 1.0)
             local badge = "UNLOCKED"
             local bw = world.font:getWidth(badge)
             love.graphics.print(badge, tx + (tw - bw) / 2, ty + 24)
         elseif not req_owned then
-            love.graphics.setColor(0.8, 0.3, 0.3, 1.0)
+            local c = PAL[4]
+            love.graphics.setColor(c[1], c[2], c[3], 1.0)
             local badge = "LOCKED"
             local bw = world.font:getWidth(badge)
             love.graphics.print(badge, tx + (tw - bw) / 2, ty + 24)
         else
-            local cost_col = affordable and {0.95, 0.85, 0.25} or {0.55, 0.35, 0.15}
-            love.graphics.setColor(cost_col[1], cost_col[2], cost_col[3], 1.0)
+            local c = affordable and PAL[6] or PAL[4]
+            love.graphics.setColor(c[1], c[2], c[3], 1.0)
             local badge = sk.cost .. " wood"
             local bw = world.font:getWidth(badge)
             love.graphics.print(badge, tx + (tw - bw) / 2, ty + 24)
         end
         
         -- Desc
-        love.graphics.setColor(0.65, 0.65, 0.70, 0.9)
+        local desc = PAL[19]
+        love.graphics.setColor(desc[1], desc[2], desc[3], 1.0)
         local lines = {}
         for line in (sk.desc .. "\n"):gmatch("([^\n]*)\n") do
             table.insert(lines, line)
@@ -528,7 +558,8 @@ function M.draw_hud(world)
             local sy = math.floor((ft.y - world.camera_y) * PIXEL)
 
             if ft.is_crit then
-                love.graphics.setColor(0, 0, 0, alpha * 0.6)
+                local shadow = PAL[16]
+                love.graphics.setColor(shadow[1], shadow[2], shadow[3], 1.0)
                 for ox = -1, 1 do
                     for oy = -1, 1 do
                         if ox ~= 0 or oy ~= 0 then
@@ -536,11 +567,14 @@ function M.draw_hud(world)
                         end
                     end
                 end
-                love.graphics.setColor(1.0, 0.85, 0.15, alpha)
+                local crit = PAL[6]
+                love.graphics.setColor(crit[1], crit[2], crit[3], 1.0)
             else
-                love.graphics.setColor(0, 0, 0, alpha * 0.5)
+                local shadow = PAL[16]
+                love.graphics.setColor(shadow[1], shadow[2], shadow[3], 1.0)
                 love.graphics.print(ft.text, sx + 1, sy + 1, 0, scale, scale)
-                love.graphics.setColor(1.0, 1.0, 1.0, alpha)
+                local white = PAL[20]
+                love.graphics.setColor(white[1], white[2], white[3], 1.0)
             end
             love.graphics.print(ft.text, sx, sy, 0, scale, scale)
         end
@@ -575,13 +609,14 @@ function M.draw_hud(world)
         local ey = log_y + (i - 1) * line_h
 
         -- Icon
-        draw_chunk(ex - 5*icon_s, ey + 2, icon_s, alpha)
+        draw_chunk(ex - 5*icon_s, ey + 2, icon_s)
 
         -- Text
-        love.graphics.setColor(0, 0, 0, alpha * 0.5)
+        local shadow = PAL[16]
+        love.graphics.setColor(shadow[1], shadow[2], shadow[3], 1.0)
         love.graphics.print(text, ex + 1, ey + 1)
-        local c = PAL[13]
-        love.graphics.setColor(c[1], c[2], c[3], alpha)
+        local c = PAL[12]
+        love.graphics.setColor(c[1], c[2], c[3], 1.0)
         love.graphics.print(text, ex, ey)
     end
 
@@ -592,17 +627,14 @@ function M.draw_hud(world)
         local arc = -60 * math.sin(t * math.pi)
         local cx = fc.x + (fc.tx - fc.x) * t
         local cy = fc.y + (fc.ty - fc.y) * t + arc
-        -- Slight fade at the very end
-        local alpha = t > 0.85 and (1 - t) / 0.15 or 1.0
-        draw_chunk(cx - 2*PIXEL, cy - 2*PIXEL, PIXEL, alpha)
+        draw_chunk(cx - 2*PIXEL, cy - 2*PIXEL, PIXEL)
     end
 
     -- Wood total (top-left, persistent) — move right of battery
     if world.player.wood_count > 0 then
-        local alpha = 0.9
-        draw_chunk(10, 38, icon_s, alpha)
-        local c = PAL[13]
-        love.graphics.setColor(c[1], c[2], c[3], alpha)
+        draw_chunk(10, 38, icon_s)
+        local c = PAL[12]
+        love.graphics.setColor(c[1], c[2], c[3], 1.0)
         love.graphics.print(tostring(world.player.wood_count), 10 + 5*icon_s, 34)
     end
 
@@ -614,20 +646,22 @@ function M.draw_hud(world)
             local btn_screen_x = math.floor(((world._btn_x or 19) - world.camera_x) * PIXEL)
             local btn_screen_y = math.floor(((world._btn_y or 64) - world.camera_y) * PIXEL)
             if world.player.wood_count >= 20 then
-                -- Green prompt
-                love.graphics.setColor(0.3, 0.9, 0.3, 0.9)
-                love.graphics.print("[E] Spawn Robot (-20 wood)", btn_screen_x - 20, btn_screen_y - 24)
+                -- Teal prompt (Success)
+                local prompt = PAL[12]
+                love.graphics.setColor(prompt[1], prompt[2], prompt[3], 1.0)
+                love.graphics.print("[E] Spawn Robot (-20 wood)", btn_screen_x - 30, btn_screen_y - 24)
             else
-                -- Grey prompt
-                love.graphics.setColor(0.6, 0.6, 0.6, 0.5)
-                love.graphics.print("[E] Need 20 wood", btn_screen_x - 20, btn_screen_y - 24)
+                -- Grey prompt (Fail)
+                local prompt = PAL[19]
+                love.graphics.setColor(prompt[1], prompt[2], prompt[3], 1.0)
+                love.graphics.print("[E] Need 20 wood", btn_screen_x - 20, btn_screen_y - 20)
             end
         end
     end
 
     -- UI hint
-    local c = PAL[23]
-    love.graphics.setColor(c[1], c[2], c[3], 0.6)
+    local c = PAL[19]
+    love.graphics.setColor(c[1], c[2], c[3], 1.0)
     love.graphics.print("WASD + SPACE | LMB = chop | E = spawn robot | R = randomize", 8, SCREEN_H - 20)
 end
 

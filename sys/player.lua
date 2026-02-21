@@ -192,7 +192,7 @@ function M.update(dt, world)
                 vy = -(5 + math.random() * 10),
                 life = life,
                 max_life = life,
-                color = ({33, 34, 32})[math.random(1, 3)],
+                color = ({5, 16, 10})[math.random(1, 3)],
             })
         end
     end
@@ -218,7 +218,7 @@ function M.update(dt, world)
                     vy = lift,
                     life = life,
                     max_life = life,
-                    color = ({33, 34, 32})[math.random(1, 3)],
+                    color = ({5, 16, 10})[math.random(1, 3)],
                 })
             end
             player.walk_dust_cd = 0.10
@@ -249,7 +249,7 @@ function M.update(dt, world)
                         vy = lift,
                         life = life,
                         max_life = life,
-                        color = ({33, 34, 32})[math.random(1, 3)],
+                        color = ({5, 16, 10})[math.random(1, 3)],
                     })
                 end
                 player.walk_dust_cd = 0.10
@@ -323,7 +323,7 @@ function M.update(dt, world)
                 vy = -(8 + math.random() * 15),
                 life = life,
                 max_life = life,
-                color = ({33, 34, 32})[math.random(1, 3)],
+                color = ({5, 16, 10})[math.random(1, 3)],
             })
         end
     end

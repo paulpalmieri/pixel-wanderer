@@ -198,12 +198,12 @@ local function draw_robot_axe(robot, result, world)
     end
 
     -- Using slightly different colors from player axe to distinguish or reuse
-    local HANDLE_DARK = 15
-    local HANDLE_LIGHT = 16
-    local HANDLE_HI = 18
-    local BLADE_INNER = 20
-    local BLADE_OUTER = 19
-    local BLADE_EDGE = 21
+    local HANDLE_DARK = 16    -- dark (Dark Violet Black)
+    local HANDLE_LIGHT = 5    -- light (Burnt Orange)
+    local HANDLE_HI = 6       -- wood highlight (Warm Gold)
+    local BLADE_INNER = 19    -- steel mid (Light Gray)
+    local BLADE_OUTER = 20    -- steel hi (Warm White)
+    local BLADE_EDGE  = 16    -- steel shadow (Dark Violet Black)
 
     local axe_pixels = {}
     

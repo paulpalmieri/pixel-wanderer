@@ -8,12 +8,12 @@ local draw_pixel = palette.draw_pixel
 
 local M = {}
 
--- Wood chunk pixel map: 0=skip, 15=dark bark, 16=mid brown, 18=light wood
+-- Wood chunk pixel map: 0=skip, 2=dark bark, 5=mid brown, 6=light wood
 local chunk_map = {
-    {  0, 16, 16,  0 },
-    { 16, 18, 18, 16 },
-    { 15, 18, 18, 15 },
-    {  0, 15, 15,  0 },
+    {  0,  5,  5,  0 },
+    {  5,  6,  6,  5 },
+    {  2,  6,  6,  2 },
+    {  0,  2,  2,  0 },
 }
 
 function M.draw_wood_chunks(world)
@@ -34,11 +34,7 @@ end
 
 function M.draw_particles(world)
     for _, p in ipairs(world.particles) do
-        local alpha = 1.0
-        if p.max_life and p.max_life > 0 then
-            alpha = math.min(1.0, p.life / (p.max_life * 0.4))
-        end
-        set_color(p.color, alpha)
+        set_color(p.color, 1.0)
         draw_pixel(math.floor(p.x), math.floor(p.y))
     end
 end
