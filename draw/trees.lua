@@ -20,8 +20,25 @@ function M.draw_trees(cam_ix, cam_iy, world)
     local floor = math.floor
 
     local function draw_tree(tree)
-        -- Skip dead trees that aren't falling and aren't hesitating
-        if tree.hp <= 0 and not tree.falling and (tree.pre_fall_timer or 0) <= 0 then return end
+        -- Skip dead trees that aren't falling, hesitating, or a stump
+        if tree.hp <= 0 and not tree.falling and (tree.pre_fall_timer or 0) <= 0 and not tree.is_stump then return end
+
+        -- Stump rendering
+        if tree.is_stump then
+            local cut_row = tree.h - tree.stump_h
+            for ty = cut_row + 1, tree.h do
+                for tx = 1, tree.w do
+                    local c = tree.grid[ty][tx]
+                    if c ~= 0 then
+                        set_color(c, 1) -- Opaque stump
+                        local sx = (tree.x + tx - 1 - cam_ix) * PIXEL
+                        local sy = (tree.y + ty - 1 - cam_iy) * PIXEL
+                        love.graphics.rectangle("fill", sx, sy, PIXEL, PIXEL)
+                    end
+                end
+            end
+            return
+        end
 
         -- Falling tree rendering
         if tree.falling then
@@ -58,7 +75,7 @@ function M.draw_trees(cam_ix, cam_iy, world)
                 for tx = 1, tree.w do
                     local c = tree.grid[ty][tx]
                     if c ~= 0 then
-                        set_color(c, fade_alpha)
+                        set_color(c, 1) -- Stump is always opaque
                         local sx = (tree.x + tx - 1 - cam_ix) * PIXEL
                         local sy = (tree.y + ty - 1 - cam_iy) * PIXEL
                         love.graphics.rectangle("fill", sx, sy, PIXEL, PIXEL)

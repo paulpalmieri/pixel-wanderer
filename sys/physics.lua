@@ -65,18 +65,18 @@ function M.update_wood_chunks(dt, world)
         if c.pickup_ready then
             local dx = math.abs((c.x + CHUNK_SZ / 2) - (player.x + 8))
             local dy = math.abs((c.y + CHUNK_SZ / 2) - (player.y + 8))
-            if dx < 24 and dy < 24 then
+            if dx < 10 and dy < 10 then
                 gen_sound.play_pickup_sound(world)
                 world.resource_accum.wood = world.resource_accum.wood + 1
                 world.resource_accum_timer = math.max(world.resource_accum_timer, 0.001)
                 -- Convert world position to screen position and fly to HUD
-                local sx = (c.x - world.camera_x) * C.PIXEL
-                local sy = (c.y - world.camera_y) * C.PIXEL
+                local sx = math.floor(c.x - world.camera_x + 0.5) * C.PIXEL
+                local sy = math.floor(c.y - world.camera_y + 0.5) * C.PIXEL
                 table.insert(world.flying_chunks, {
                     x = sx, y = sy,
                     tx = 16, ty = 16,  -- HUD chunk icon center
-                    delay = 0.25,      -- linger near player before flying
-                    t = 0, duration = 0.7,
+                    delay = 0.05,      -- reduced linger near player before flying
+                    t = 0, duration = 0.35, -- snappier pickup flight
                 })
                 table.remove(world.wood_chunks, i)
             end

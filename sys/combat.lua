@@ -8,25 +8,53 @@ local M = {}
 function M.hit_tree(world, entity, tree)
     local tree_cx = tree.x + tree.w / 2
 
-    -- Critical strike: 25% chance
-    local is_crit = math.random() < 0.25
     local bonus = (world.upgrades and world.upgrades.axe_damage) or 0
-    local damage = (is_crit and 2 or 1) + bonus
+    local damage = 1 + bonus
     tree.hp = math.max(0, tree.hp - damage)
-    tree.shake_timer = is_crit and 0.3 or 0.15
+    tree.shake_timer = 0.15
 
-    -- Bend: big on crit, small on normal
-    if is_crit then
-        local bend_strength = 2.0 + math.random() * 0.8
-        tree.bend_timer = 0.9 + math.random() * 0.3
-        tree.bend_dir = entity.facing * bend_strength
-        tree.flash_timer = 0.15
-    else
-        local bend_strength = 1.2 + math.random() * 0.5
-        tree.bend_timer = 0.6 + math.random() * 0.15
-        tree.bend_dir = entity.facing * bend_strength
-        tree.flash_timer = 0.1
+    -- Visual damage to the trunk grid (carve out pixels on the cut rows)
+    if tree.hp > 0 or tree.falling == false then
+        local cut_row = tree.h - tree.stump_h
+        local hit_dir = entity.facing
+        
+        -- Distribute total chips across the 3 rows: cut_row, cut_row - 1, cut_row - 2
+        local total_chips = math.ceil(damage * 2)
+        
+        for _ = 1, total_chips do
+            -- Weighted random to favor the actual cut row
+            local row_offset = math.random(0, 2)
+            if math.random() < 0.5 then row_offset = 0 end
+            local row = cut_row - row_offset
+            
+            if tree.grid[row] then
+                local trunk_pixels = {}
+                for x = 1, tree.w do
+                    if tree.grid[row][x] ~= 0 then
+                        table.insert(trunk_pixels, x)
+                    end
+                end
+                
+                -- Keep at least 1 pixel per row so the tree never looks fully severed/floating
+                if #trunk_pixels > 1 then
+                    table.sort(trunk_pixels, function(a, b)
+                        if hit_dir == 1 then return a < b else return a > b end
+                    end)
+                    
+                    -- Pick among the outermost 1-3 pixels to make it jagged
+                    local max_idx = math.min(#trunk_pixels - 1, 3)
+                    local pick_idx = math.random(1, max_idx)
+                    
+                    tree.grid[row][trunk_pixels[pick_idx]] = 0
+                end
+            end
+        end
     end
+
+    local bend_strength = 1.2 + math.random() * 0.5
+    tree.bend_timer = 0.6 + math.random() * 0.15
+    tree.bend_dir = entity.facing * bend_strength
+    tree.flash_timer = 0.1
     gen_sound.play_chop_sound()
 
     -- Slash effect (position at trunk face, not bounding box edge)
@@ -34,18 +62,26 @@ function M.hit_tree(world, entity, tree)
     local slash_x = tree_cx - entity.facing * trunk_hw
     local slash_y = entity.y + 9
 
-    -- Floating damage number — flies out from impact
-    table.insert(world.floating_texts, {
-        x = slash_x,
-        y = slash_y - 2,
-        text = tostring(damage),
-        life = is_crit and 1.0 or 0.7,
-        max_life = is_crit and 1.0 or 0.7,
-        is_crit = is_crit,
-        vx = entity.facing * (is_crit and (40 + math.random() * 20) or (25 + math.random() * 15)),
-        vy = -(is_crit and (50 + math.random() * 20) or (30 + math.random() * 15)),
-        scale = is_crit and 1.5 or 1.0,
-    })
+
+
+    -- White pop explosion hit marker
+    -- More particles, live slightly longer, higher speed
+    local pop_count = math.random(8, 12)
+    for _ = 1, pop_count do
+        local life = 0.12 + math.random() * 0.1
+        local speed = 80 + math.random() * 60
+        local angle = math.random() * math.pi * 2
+        table.insert(world.particles, {
+            x = slash_x + (math.random() - 0.5) * 6,
+            y = slash_y + (math.random() - 0.5) * 6,
+            vx = math.cos(angle) * speed,
+            vy = math.sin(angle) * speed,
+            life = life,
+            max_life = life,
+            color = ({20, 20, 19})[math.random(1, 3)], -- Warm white / light gray
+        })
+    end
+
     for i = -2, 2 do
         local life = 0.09 + math.random() * 0.04
         table.insert(world.particles, {
@@ -58,53 +94,41 @@ function M.hit_tree(world, entity, tree)
             color = ({12, 12, 11})[math.random(1, 3)], -- Impact (Sage Teal/Steel Blue)
         })
     end
-    -- Sparks (more on crit)
-    local spark_count = is_crit and math.random(5, 8) or math.random(3, 5)
-    for _ = 1, spark_count do
-        local life = 0.12 + math.random() * 0.15
-        table.insert(world.particles, {
-            x = slash_x + (math.random() - 0.5) * 3,
-            y = slash_y + (math.random() - 0.5) * 4,
-            vx = entity.facing * (30 + math.random() * 50),
-            vy = (math.random() - 0.5) * 60,
-            life = life,
-            max_life = life,
-            color = ({12, 20, 6})[math.random(1, 3)], -- Sparks (Sage Teal, Warm White, Warm Gold)
-        })
-    end
 
-    -- Leaf particles — scale with tree size, more on crit
-    local leaf_count = math.max(2, math.floor(tree.w * tree.h / 200))
-    if is_crit then leaf_count = leaf_count + 3 end
-    leaf_count = math.random(leaf_count, leaf_count + 3)
+
+    -- Leaf particles (Shed heavily from impact)
+    local leaf_count = math.max(6, math.floor(tree.w * tree.h / 150))
+    leaf_count = math.random(leaf_count, leaf_count + 5)
     for _ = 1, leaf_count do
-        local life = 0.4 + math.random() * 0.4
+        local life = 0.6 + math.random() * 0.6
         table.insert(world.particles, {
             x = tree.x + math.random(0, tree.w),
-            y = tree.y + math.random(0, math.floor(tree.h * 0.6)),
-            vx = entity.facing * (10 + math.random() * 20) + (math.random() - 0.5) * 30,
-            vy = -math.random(15, 45),
+            y = tree.y + math.random(0, math.floor(tree.h * 0.7)),
+            vx = entity.facing * (15 + math.random() * 25) + (math.random() - 0.5) * 40,
+            vy = -math.random(10, 30),
             life = life,
             max_life = life,
-            color = ({9, 7, 8, 7})[math.random(1, 4)], -- Leaves (Dark Olive, Olive Green, Forest Green)
+            color = ({7, 8, 9})[math.random(1, 3)], -- Leaves
         })
     end
 
-    -- Wood chunk
-    local dir = entity.facing * (0.6 + math.random() * 0.8)
-    table.insert(world.wood_chunks, {
-        x = tree.x + tree.w / 2 + (math.random() - 0.5) * 8,
-        y = tree.y + tree.h * (0.3 + math.random() * 0.3),
-        vx = dir * (25 + math.random() * 35),
-        vy = -math.random(50, 100),
-        on_ground = false,
-        pickup_ready = false,
-    })
+    -- Spawn wood chunks immediately on hit
+    local chunk_count = 1
+    for _ = 1, chunk_count do
+        table.insert(world.wood_chunks, {
+            x = slash_x + (math.random() - 0.5) * 4,
+            y = slash_y - 2,
+            vx = entity.facing * (10 + math.random() * 20) + (math.random() - 0.5) * 80,
+            vy = -math.random(80, 140),
+            on_ground = false,
+            pickup_ready = false,
+        })
+    end
 
     -- Tree dies — initiate fall instead of instant removal
     if tree.hp <= 0 then
         if world.upgrades and world.upgrades.battery_leech and world.battery then
-            local max_batt = 10 + (world.upgrades.battery_bonus or 0)
+            local max_batt = 60 + (world.upgrades.battery_bonus or 0)
             world.battery = math.min(world.battery + 1, max_batt)
         end
         local pre_fall = 0.15 + (tree.h / 80) * 0.4
@@ -183,7 +207,9 @@ function M.update(dt, world)
                 local dist = math.abs(tree_cx - player_cx)
                 local facing_tree = (player.facing == 1 and tree_cx >= player_cx) or
                                     (player.facing == -1 and tree_cx <= player_cx)
-                if dist < 14 and facing_tree then
+                
+                local trunk_hw = math.max(2, math.floor(tree.w * 0.15))
+                if dist < 14 + trunk_hw and facing_tree then
                     player.axe_has_hit = true
                     M.hit_tree(world, player, tree)
 
@@ -256,8 +282,8 @@ function M.update(dt, world)
                         table.insert(world.wood_chunks, {
                             x = cx + (math.random() - 0.5) * 4,
                             y = base_y - math.random(0, 4),
-                            vx = tree.fall_dir * (10 + math.random() * 40) + (math.random() - 0.5) * 30,
-                            vy = -math.random(40, 100),
+                            vx = tree.fall_dir * (15 + math.random() * 30) + (math.random() - 0.5) * 90,
+                            vy = -math.random(70, 140),
                             on_ground = false,
                             pickup_ready = false,
                         })
@@ -347,8 +373,8 @@ function M.update(dt, world)
         end
     end
     for i = #world.trees, 1, -1 do
-        if world.trees[i].fell and world.trees[i].fall_timer <= 0 then
-            table.remove(world.trees, i)
+        if world.trees[i].fell and world.trees[i].fall_timer <= 0 and not world.trees[i].is_stump then
+            world.trees[i].is_stump = true
         end
     end
 end

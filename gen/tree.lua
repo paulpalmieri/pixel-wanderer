@@ -25,16 +25,18 @@ local function raster_trunk(grid, x1, y1, x2, y2, w1, w2, gw, gh)
             local left  = math.max(1,  math.floor(px - half + 0.5))
             local right = math.min(gw, math.floor(px + half - 0.5))
             for gx = left, right do
-                local frac = (gx - (px - half)) / math.max(0.5, tw)
+                local frac = (gx - (px - half)) / math.max(0.01, tw)
                 -- Add some bark texture: vertical stripes with some wobble
-                local noise = math.sin(gx * 1.8 + gy * 0.4) * 0.15 + math.cos(gx * 0.5) * 0.1
-                local bark = frac + noise
+                local noise = math.sin(gx * 2.5 + gy * 0.3) * 0.15 + math.cos(gx * 0.8) * 0.12
+                -- Pixel art dithering based on position
+                local dither = ((gx + gy) % 2 == 0) and 0.05 or -0.05
+                local bark = frac + noise + dither
                 if bark < 0.25 then
-                    grid[gy][gx] = 6 -- light wood (Warm Gold)
-                elseif bark > 0.80 then
-                    grid[gy][gx] = 2  -- dark bark (Dark Brown)
+                    grid[gy][gx] = 6 -- light wood
+                elseif bark > 0.75 then
+                    grid[gy][gx] = 3  -- Deep Red Brown for dark bark shading
                 else
-                    grid[gy][gx] = 5 -- mid brown (Burnt Orange)
+                    grid[gy][gx] = 5 -- mid brown
                 end
             end
         end
@@ -56,24 +58,26 @@ local function raster_foliage(grid, bcx, bcy, rx, ry, gw, gh)
             local d2 = ndx * ndx + ndy * ndy
             
             -- Add clumpiness to the edge and the shading
-            local clump = math.sin(x * 0.45) * math.cos(y * 0.45) * 0.25
+            local clump = math.sin(x * 0.6) * math.cos(y * 0.6) * 0.2 + math.sin(x * 0.2 + y * 0.3) * 0.15
             local edge = d2 + clump
             
-            if edge <= 1.0 then
-                -- Clustered specular / shadows based on direction and depth
-                local shade = ndx * 0.4 + ndy * 0.5 + edge * 0.3
-                -- add a bit of high-frequency noise for individual leaf clusters
-                local leaf_noise = (math.sin(x * 1.7) + math.cos(y * 1.3)) * 0.1
-                shade = shade + leaf_noise
+            if edge <= 1.05 then
+                -- Clustered specular / shadows based on direction (light from top-left) and depth
+                local shade = ndx * 0.4 + ndy * 0.6 + edge * 0.4
+                -- Add cluster noise to make leaves look bunchy
+                local leaf_noise = (math.sin(x * 1.5 + y * 0.5) + math.cos(x * 0.5 + y * 1.5)) * 0.15
+                -- Pixel art dithering
+                local dither = ((x + y) % 2 == 0) and 0.08 or -0.08
+                shade = shade + leaf_noise + dither
                 
-                if shade < -0.15 then
+                if shade <= -0.15 then
                     grid[y][x] = 7  -- Highlight (Olive Green)
-                elseif shade < 0.30 then
+                elseif shade <= 0.35 then
                     grid[y][x] = 8  -- Mid-light (Forest Green)
-                elseif shade < 0.70 then
+                elseif shade <= 0.85 then
                     grid[y][x] = 10 -- Core shadow (Dark Teal Blue)
                 else
-                    grid[y][x] = 9  -- Deep shadow (Dark Olive)
+                    grid[y][x] = 9  -- Deep contour/shadow (Dark Olive)
                 end
             end
         end
@@ -89,17 +93,14 @@ function M.generate_tree(size_hint)
 
     local r = math.random()
     local tree_type
-    if r < 0.40 then tree_type = 1        -- round
-    elseif r < 0.70 then tree_type = 3    -- conifer
-    else tree_type = 5 end                -- wide spreading
+    if r < 0.35 then tree_type = 1        -- round/oak
+    elseif r < 0.70 then tree_type = 2    -- conifer/pine (mapped to 2, wait previously it was 3)
+    else tree_type = 3 end                -- wide spreading/willow-ish (mapped to 3, previously 5)
 
     local sizes = {
-        [1] = { small={w={14,20},h={32,44}}, medium={w={18,26},h={44,60}}, large={w={24,34},h={56,72}} },
-        [2] = { small={w={12,16},h={36,48}}, medium={w={14,20},h={48,64}}, large={w={16,24},h={60,78}} },
-        [3] = { small={w={10,14},h={30,44}}, medium={w={12,18},h={44,62}}, large={w={14,22},h={58,78}} },
-        [4] = { small={w={22,28},h={32,42}}, medium={w={28,38},h={42,56}}, large={w={34,44},h={52,68}} },
-        [5] = { small={w={18,26},h={32,42}}, medium={w={24,34},h={42,54}}, large={w={30,42},h={50,64}} },
-        [6] = { small={w={6,10},h={6,10}},   medium={w={8,14},h={8,14}},   large={w={12,18},h={10,16}} },
+        [1] = { small={w={16,22},h={38,48}}, medium={w={22,28},h={48,64}}, large={w={28,36},h={64,80}} },
+        [2] = { small={w={12,16},h={36,50}}, medium={w={16,22},h={50,68}}, large={w={20,26},h={68,88}} },
+        [3] = { small={w={24,30},h={40,50}}, medium={w={30,40},h={50,64}}, large={w={38,48},h={64,78}} },
     }
     local sz = sizes[tree_type][size_hint]
     local w = math.random(sz.w[1], sz.w[2])
@@ -111,108 +112,74 @@ function M.generate_tree(size_hint)
 
     if tree_type == 1 then
         ----------------------------------------------------------------
-        -- ROUND TREE: trunk + 1 main round blob + optional small cap
+        -- OAK TREE: thick trunk + cluster of over-lapping round blobs
         ----------------------------------------------------------------
-        local cr = math.floor(w * 0.42)
-        local crown_cy = cr + 2
-        local tw = math.max(2, math.floor(w * 0.14))
-        trunks[1] = {cx, h, cx, crown_cy + math.floor(cr * 0.15), tw, math.max(2, tw - 1)}
-        fol[1] = {cx, crown_cy, cr, math.floor(cr * (0.85 + math.random() * 0.15))}
-        if w >= 20 then
-            fol[2] = {cx + math.random(-1, 1), crown_cy - cr * 0.40,
-                      cr * 0.50, cr * 0.42}
-        end
+        local cr = math.floor(w * 0.38)
+        local crown_cy = cr + 6
+        local tw = math.max(3, math.floor(w * 0.16))
+        trunks[1] = {cx, h, cx, crown_cy + math.floor(cr * 0.2), tw, math.max(2, tw - 1)}
+        -- main central blob
+        fol[1] = {cx, crown_cy + 2, cr, math.floor(cr * 0.9)}
+        -- left/right smaller clusters
+        fol[2] = {cx - math.floor(cr * 0.6), crown_cy + 4, math.floor(cr * 0.7), math.floor(cr * 0.65)}
+        fol[3] = {cx + math.floor(cr * 0.6), crown_cy + 4, math.floor(cr * 0.7), math.floor(cr * 0.65)}
+        -- top cluster
+        fol[4] = {cx + math.random(-1, 1), crown_cy - math.floor(cr * 0.5), math.floor(cr * 0.75), math.floor(cr * 0.6)}
 
     elseif tree_type == 2 then
         ----------------------------------------------------------------
-        -- TALL: trunk + 2-3 stacked ovals
+        -- PINE/CONIFER: trunk + 4 stacked overlapping cone-like layers
         ----------------------------------------------------------------
-        local n = (h > 55) and 3 or 2
-        local brx = math.max(3, math.floor(w * 0.40))
-        local bry = math.max(3, math.floor(h * 0.13))
-        local top_y = bry + 2
-        local bot_y = math.floor(h * 0.65)
-        local tw = math.max(2, math.floor(w * 0.16))
-        trunks[1] = {cx, h, cx, top_y + math.floor(bry * 0.5), tw, math.max(1, tw - 1)}
-        for i = 1, n do
-            local t = (i - 1) / math.max(1, n - 1)
-            local by = top_y + t * (bot_y - top_y)
-            fol[#fol+1] = {cx + (math.random() - 0.5) * 2,
-                           by, brx, bry}
-        end
-
-    elseif tree_type == 3 then
-        ----------------------------------------------------------------
-        -- CONIFER: trunk + 2-3 stacked layers, wider toward bottom
-        ----------------------------------------------------------------
-        local n = (h > 50) and math.random(3, 4) or 2
-        local base_rx = math.max(3, math.floor(w * 0.44))
-        local layer_ry = math.max(3, math.floor(h * 0.11))
-        local tw = math.max(2, math.floor(w * 0.18))
-        local top_y = layer_ry + 1
-        local bot_y = math.floor(h * 0.68)
-        trunks[1] = {cx, h, cx, top_y, tw, math.max(1, tw - 1)}
+        local n = (h > 55) and 4 or 3
+        local base_rx = math.max(4, math.floor(w * 0.42))
+        local top_y = 6
+        local bot_y = math.floor(h * 0.75)
+        local tw = math.max(2, math.floor(w * 0.14))
+        trunks[1] = {cx, h, cx, top_y + 4, tw, math.max(1, tw - 1)}
         for i = 1, n do
             local t = (i - 1) / math.max(1, n - 1)  -- 0=top, 1=bottom
-            local rx = math.max(2, math.floor(base_rx * (0.35 + t * 0.65)))
-            local ry = math.max(2, math.floor(layer_ry * (0.70 + t * 0.40)))
+            local rx = math.max(3, math.floor(base_rx * (0.30 + t * 0.70)))
+            local ry = math.max(3, math.floor((bot_y - top_y) / n * 0.85))
             local by = top_y + t * (bot_y - top_y)
+            -- make the top layer a bit narrower
+            if i == 1 then rx = rx * 0.8 end
             fol[#fol+1] = {cx, by, rx, ry}
+            -- add secondary overlapping sub-blobs to jagged the edges
+            if i > 1 then
+                fol[#fol+1] = {cx - math.floor(rx*0.4), by + 1, math.floor(rx*0.6), math.floor(ry*0.9)}
+                fol[#fol+1] = {cx + math.floor(rx*0.4), by + 1, math.floor(rx*0.6), math.floor(ry*0.9)}
+            end
         end
-
-    elseif tree_type == 4 then
-        ----------------------------------------------------------------
-        -- BRANCHING: Y-trunk with 1 blob per branch tip
-        ----------------------------------------------------------------
-        local br = math.max(3, math.floor(math.min(w, h) * 0.16))
-        local split_y = math.floor(h * (0.52 + math.random() * 0.08))
-        local spread = math.floor(w * 0.22)
-        local tw = math.max(2, math.floor(w * 0.10))
-        local branch_top = math.max(br + 2, math.floor(h * 0.12))
-        -- main trunk
-        trunks[1] = {cx, h, cx, split_y, tw + 1, tw}
-        -- left branch + blob
-        local lx = cx - spread
-        local ly = branch_top
-        trunks[2] = {cx, split_y, lx, ly + math.floor(br * 0.3), tw, 1}
-        fol[#fol+1] = {lx, ly, br * (1.0 + math.random() * 0.2),
-                       br * (0.85 + math.random() * 0.2)}
-        -- right branch + blob
-        local rx_pos = cx + spread
-        local ry_pos = branch_top + math.random(-2, 2)
-        trunks[3] = {cx, split_y, rx_pos, ry_pos + math.floor(br * 0.3), tw, 1}
-        fol[#fol+1] = {rx_pos, ry_pos, br * (1.0 + math.random() * 0.2),
-                       br * (0.85 + math.random() * 0.2)}
-        -- optional center blob at junction
-        if math.random() < 0.45 then
-            fol[#fol+1] = {cx, split_y - math.floor(br * 0.5),
-                           br * 0.70, br * 0.60}
-        end
-
-    elseif tree_type == 5 then
-        ----------------------------------------------------------------
-        -- WIDE SPREADING: trunk + center blob + side blobs
-        ----------------------------------------------------------------
-        local br = math.max(3, math.floor(math.min(w, h) * 0.17))
-        local crown_cy = br + 3
-        local spread = math.floor(w * 0.26)
-        local tw = math.max(3, math.floor(w * 0.13))
-        trunks[1] = {cx, h, cx, crown_cy + math.floor(br * 0.15), tw, tw - 1}
-        -- center
-        fol[1] = {cx, crown_cy, br, math.floor(br * 0.85)}
-        -- sides
-        fol[2] = {cx - spread, crown_cy + math.floor(br * 0.12),
-                  math.floor(br * 0.75), math.floor(br * 0.65)}
-        fol[3] = {cx + spread, crown_cy + math.floor(br * 0.12),
-                  math.floor(br * 0.75), math.floor(br * 0.65)}
 
     else
         ----------------------------------------------------------------
-        -- BUSH: 1 blob, no trunk
+        -- WILLOW / BRANCHING: Split trunk with extended sweeping foliage
         ----------------------------------------------------------------
-        local brx = math.max(2, math.floor(w * 0.42))
-        local bry = math.max(2, math.floor(h * 0.42))
-        fol[1] = {cx, math.floor(h * 0.55), brx, bry}
+        local br = math.max(4, math.floor(math.min(w, h) * 0.20))
+        local split_y = math.floor(h * 0.50)
+        local spread = math.floor(w * 0.28)
+        local tw = math.max(3, math.floor(w * 0.14))
+        
+        -- main trunk
+        trunks[1] = {cx, h, cx, split_y, tw, math.max(2, tw - 1)}
+        
+        local ly = br + 6
+        local ry_pos = br + 4
+        -- left branch
+        trunks[2] = {cx, split_y, cx - spread + 2, ly, math.max(2, tw - 1), 1}
+        -- right branch
+        trunks[3] = {cx, split_y, cx + spread - 2, ry_pos, math.max(2, tw - 1), 1}
+        
+        -- center cluster
+        fol[1] = {cx, split_y - math.floor(br * 0.5), br, math.floor(br * 0.9)}
+        
+        -- left and right sweeping foliage
+        fol[2] = {cx - spread, ly, math.floor(br * 1.1), math.floor(br * 1.3)}
+        fol[3] = {cx + spread, ry_pos, math.floor(br * 1.1), math.floor(br * 1.2)}
+        
+        -- additional filler
+        fol[4] = {cx - math.floor(spread*0.5), ly - 4, math.floor(br * 0.8), math.floor(br * 0.8)}
+        fol[5] = {cx + math.floor(spread*0.5), ry_pos - 4, math.floor(br * 0.8), math.floor(br * 0.8)}
     end
 
     ----------------------------------------------------------------

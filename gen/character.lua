@@ -101,16 +101,12 @@ local function make_leg(h, pal)
     return pixels
 end
 
-function M.generate()
-    local pal = PALETTES[math.random(1, #PALETTES)]
-    local body_type = BODY_TYPES[math.random(1, #BODY_TYPES)]
-
+local function build_character(pal, body_type, eye_style, antenna_style, detail_style)
     local torso_w = body_type.torso_w
     local torso_h = body_type.torso_h
     local head_w = 5  -- always narrower than torso
 
     -- HEAD: 5×4, with eye style variation
-    local eye_style = math.random(1, 4)  -- 1=two slits, 2=visor bar, 3=cyclops, 4=dot eyes
     local head_extras = {}
 
     if eye_style == 1 then
@@ -144,7 +140,6 @@ function M.generate()
     local head_pixels = make_soft_rect(head_w, 4, pal, head_extras)
 
     -- Antenna: 0-2px nub on top of head
-    local antenna_style = math.random(1, 4)  -- 1=none, 2=center nub, 3=offset spike, 4=twin antennae
     local antenna_pixels = {}
     if antenna_style == 2 then
         table.insert(antenna_pixels, {dx = 2, dy = -1, c = pal.eye})
@@ -163,7 +158,6 @@ function M.generate()
     end
 
     -- TORSO: variable size, with detail variation
-    local detail_style = math.random(1, 5)
     local torso_extras = {}
 
     if detail_style == 1 then
@@ -200,7 +194,7 @@ function M.generate()
     end
 
     -- Shoulder accents: 1px "pauldrons" on top corners of torso
-    local has_shoulders = math.random() > 0.4
+    local has_shoulders = (pal.name == "player_industrial") or (math.random() > 0.4)
     if has_shoulders then
         table.insert(torso_extras, {dx = 0, dy = 0, c = pal.body_lo})
         table.insert(torso_extras, {dx = torso_w - 1, dy = 0, c = pal.body_lo})
@@ -275,5 +269,32 @@ function M.generate()
         total_h = total_h,
     }
 end
+
+function M.generate()
+    local pal = PALETTES[math.random(1, #PALETTES)]
+    local body_type = BODY_TYPES[math.random(1, #BODY_TYPES)]
+    local eye_style = math.random(1, 4)
+    local antenna_style = math.random(1, 4)
+    local detail_style = math.random(1, 5)
+
+    return build_character(pal, body_type, eye_style, antenna_style, detail_style)
+end
+
+function M.generate_player()
+    local pal = {
+        name = "player_industrial",
+        body_hi = 6,   -- Warm Gold (Yellow)
+        body_mid = 17, -- Charcoal
+        body_lo = 1,   -- Black
+        eye = 6,       -- Warm Gold (Yellow)
+    }
+    local body_type = BODY_TYPES[1] -- standard (6x5)
+    local eye_style = 2 -- visor bar
+    local antenna_style = 2 -- center nub
+    local detail_style = 2 -- rivets
+
+    return build_character(pal, body_type, eye_style, antenna_style, detail_style)
+end
+
 
 return M

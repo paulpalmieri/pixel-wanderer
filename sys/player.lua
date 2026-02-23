@@ -42,7 +42,7 @@ function M.create(world)
         vy = 0,
         on_ground = true,
         facing = 1,
-        sprite = gen_char.generate(),
+        sprite = gen_char.generate_player(),
         -- Walk animation (6-frame cycle)
         walk_timer = 0,
         walk_frame = 0,
@@ -66,6 +66,7 @@ function M.create(world)
         axe_swing = 0,
         axe_cooldown = 0,
         axe_has_hit = false,
+        swing_variant = 1,
         -- Resources
         wood_count = 0,
     }

@@ -25,7 +25,7 @@ function M.draw_clouds(world)
     local SCREEN_W = GAME_W * PIXEL
 
     for _, layer in ipairs(world.cloud_layers) do
-        local scroll_px = layer.offset * PIXEL - world.camera_x * layer.parallax * PIXEL
+        local scroll_px = math.floor(layer.offset * PIXEL - world.camera_x * layer.parallax * PIXEL + 0.5)
         local vx = (-scroll_px) % layer.tile_w
         local quad = love.graphics.newQuad(vx, 0, SCREEN_W, layer.tile_h,
                                            layer.tile_w, layer.tile_h)

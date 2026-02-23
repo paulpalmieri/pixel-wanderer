@@ -152,23 +152,10 @@ function M.get_land_offsets(progress)
 end
 
 -- ============================================================
--- SWING OFFSETS: progress-based (0.0 to 1.0)
--- Returns per-part offsets for axe swing phases
--- Head and torso always share the same Y offset to prevent gaps
--- Phases tuned for a snappy, grounded chop:
---   windup (pull back) → strike → impact freeze → recovery
--- Legs stay planted, lateral body movement is minimal (1px max)
+-- OVERHEAD SWING OFFSETS
 -- ============================================================
-function M.get_swing_offsets(progress, facing)
-    -- Phases for 1-arm shoulder rotation:
-    -- 0.00-0.25: Windup (pulling back and up)
-    -- 0.25-0.35: Peak/Hold (arm max height, body stretched)
-    -- 0.35-0.45: Strike (fast arc over top)
-    -- 0.45-0.65: Impact (body crunch, heavy hit)
-    -- 0.65-0.80: Rebound
-    -- 0.80-1.00: Recovery
-    
-    if progress <= 0.25 then
+function M.get_overhead_swing_offsets(progress, facing)
+    if progress <= 0.15 then
         -- Windup: shift weight back, arm starts pulling back
         return {
             head      = {-1, 0},
@@ -178,7 +165,7 @@ function M.get_swing_offsets(progress, facing)
             near_leg  = {-1, 0},
             far_leg   = {0, 0},
         }
-    elseif progress <= 0.35 then
+    elseif progress <= 0.25 then
         -- Peak: Max stretch before throwing the weight
         return {
             head      = {-1, -1},
@@ -188,7 +175,7 @@ function M.get_swing_offsets(progress, facing)
             near_leg  = {0, 0},
             far_leg   = {0, 0},
         }
-    elseif progress <= 0.45 then
+    elseif progress <= 0.40 then
         -- STRIKE: Snapping over the top. Fast smear phase.
         return {
             head      = {1, 0},
@@ -218,7 +205,7 @@ function M.get_swing_offsets(progress, facing)
             near_leg  = {0, 0},
             far_leg   = {0, 0},
         }
-    elseif progress <= 1.0 then
+    else
         -- Recovery back to idle
         return {
             head      = {0, 0},
@@ -232,15 +219,15 @@ function M.get_swing_offsets(progress, facing)
     return {}
 end
 
-function M.get_swing_arm_shape(progress)
+function M.get_overhead_swing_arm_shape(progress)
     -- Returns arm pixels relative to shoulder. +x is FORWARD, +y is DOWN
-    if progress <= 0.25 then
+    if progress <= 0.15 then
         -- WINDUP: arm points back and slightly down
         return { {dx=0, dy=0}, {dx=-1, dy=0}, {dx=-1, dy=1}, {dx=-2, dy=1} }
-    elseif progress <= 0.35 then
+    elseif progress <= 0.25 then
         -- PEAK: arm points flat back
         return { {dx=0, dy=0}, {dx=-1, dy=0}, {dx=-2, dy=0}, {dx=-2, dy=1} }
-    elseif progress <= 0.45 then
+    elseif progress <= 0.40 then
         -- STRIKE: arm swings forward-down
         return { {dx=0, dy=0}, {dx=1, dy=1}, {dx=1, dy=2}, {dx=2, dy=2} }
     elseif progress <= 0.65 then
@@ -253,6 +240,203 @@ function M.get_swing_arm_shape(progress)
         -- RECOVERY: normal
         return nil
     end
+end
+
+-- ============================================================
+-- SIDE SWING OFFSETS
+-- Torso twists instead of just dipping
+-- ============================================================
+function M.get_side_swing_offsets(progress, facing)
+    if progress <= 0.15 then
+        -- Windup: shift weight back, pull back (shortened)
+        return {
+            head      = {-1, 0},
+            torso     = {-1, 0},
+            near_arm  = {-1, 0},
+            far_arm   = {0, 0},
+            near_leg  = {-1, 0},
+            far_leg   = {0, 0},
+        }
+    elseif progress <= 0.25 then
+        -- Peak: Max stretch back (reaches peak faster)
+        return {
+            head      = {-2, 0},
+            torso     = {-2, 0},
+            near_arm  = {-2, 0},
+            far_arm   = {0, 0},
+            near_leg  = {-1, 0},
+            far_leg   = {0, 0},
+        }
+    elseif progress <= 0.40 then
+        -- STRIKE: Twisting forward fast (starts earlier, ends earlier)
+        return {
+            head      = {1, 0},
+            torso     = {1, 0},
+            near_arm  = {2, 0},
+            far_arm   = {1, 0},
+            near_leg  = {1, 0},
+            far_leg   = {0, 0},
+        }
+    elseif progress <= 0.65 then
+        -- IMPACT: Full extension forward (longer impact hold for punchiness)
+        return {
+            head      = {2, 0},
+            torso     = {2, 0},
+            near_arm  = {3, 0},
+            far_arm   = {1, 0},
+            near_leg  = {1, 0},
+            far_leg   = {0, 0},
+        }
+    elseif progress <= 0.80 then
+        -- REBOUND
+        return {
+            head      = {1, 0},
+            torso     = {1, 0},
+            near_arm  = {1, 0},
+            far_arm   = {0, 0},
+            near_leg  = {0, 0},
+            far_leg   = {0, 0},
+        }
+    else
+        -- Recovery back to idle
+        return {
+            head      = {0, 0},
+            torso     = {0, 0},
+            near_arm  = {0, 0},
+            far_arm   = {0, 0},
+            near_leg  = {0, 0},
+            far_leg   = {0, 0},
+        }
+    end
+end
+
+function M.get_side_swing_arm_shape(progress)
+    -- Returns arm pixels relative to shoulder. +x is FORWARD, +y is DOWN
+    if progress <= 0.15 then
+        -- WINDUP: arm points mostly horizontal back
+        return { {dx=0, dy=0}, {dx=-1, dy=0}, {dx=-2, dy=0}, {dx=-3, dy=0} }
+    elseif progress <= 0.25 then
+        -- PEAK: arm horizontal furthest back
+        return { {dx=0, dy=0}, {dx=-1, dy=0}, {dx=-2, dy=0}, {dx=-3, dy=0}, {dx=-4, dy=0} }
+    elseif progress <= 0.40 then
+        -- STRIKE: sweeping forward
+        return { {dx=0, dy=0}, {dx=1, dy=0}, {dx=2, dy=0}, {dx=3, dy=0} }
+    elseif progress <= 0.65 then
+        -- IMPACT: fully forward
+        return { {dx=0, dy=0}, {dx=1, dy=0}, {dx=2, dy=0}, {dx=3, dy=0}, {dx=4, dy=0} }
+    elseif progress <= 0.80 then
+        -- REBOUND
+        return { {dx=0, dy=0}, {dx=1, dy=0}, {dx=2, dy=0}, {dx=3, dy=0} }
+    else
+        -- RECOVERY: normal
+        return nil
+    end
+end
+
+function M.get_side_swing_offsets_2(progress, facing)
+    if progress <= 0.15 then
+        -- Windup: shift weight back, arm dips
+        return {
+            head      = {-1, 0},
+            torso     = {-1, 0},
+            near_arm  = {-1, 1},
+            far_arm   = {0, 0},
+            near_leg  = {-1, 0},
+            far_leg   = {0, 0},
+        }
+    elseif progress <= 0.25 then
+        -- Peak: crouched slightly, ready to swing up
+        return {
+            head      = {-1, 1},
+            torso     = {-1, 1},
+            near_arm  = {-1, 2},
+            far_arm   = {0, 0},
+            near_leg  = {-1, 0},
+            far_leg   = {0, 0},
+        }
+    elseif progress <= 0.40 then
+        -- STRIKE: Twisting upward and forward
+        return {
+            head      = {0, -1},
+            torso     = {0, -1},
+            near_arm  = {1, 0},
+            far_arm   = {1, 0},
+            near_leg  = {0, 0},
+            far_leg   = {0, 0},
+        }
+    elseif progress <= 0.65 then
+        -- IMPACT: Fast upward extension
+        return {
+            head      = {1, -1},
+            torso     = {1, -1},
+            near_arm  = {2, -1},
+            far_arm   = {1, 0},
+            near_leg  = {1, 0},
+            far_leg   = {0, 0},
+        }
+    elseif progress <= 0.80 then
+        -- REBOUND
+        return {
+            head      = {0, 0},
+            torso     = {0, 0},
+            near_arm  = {1, 0},
+            far_arm   = {0, 0},
+            near_leg  = {0, 0},
+            far_leg   = {0, 0},
+        }
+    else
+        -- Recovery back to idle
+        return {
+            head      = {0, 0},
+            torso     = {0, 0},
+            near_arm  = {0, 0},
+            far_arm   = {0, 0},
+            near_leg  = {0, 0},
+            far_leg   = {0, 0},
+        }
+    end
+end
+
+function M.get_side_swing_arm_shape_2(progress)
+    -- Returns arm pixels relative to shoulder. +x is FORWARD, +y is DOWN
+    if progress <= 0.15 then
+        -- WINDUP: arm points down and back
+        return { {dx=0, dy=0}, {dx=-1, dy=1}, {dx=-1, dy=2}, {dx=-2, dy=2} }
+    elseif progress <= 0.25 then
+        -- PEAK: arm mostly down
+        return { {dx=0, dy=0}, {dx=-1, dy=1}, {dx=-1, dy=2}, {dx=-2, dy=3} }
+    elseif progress <= 0.40 then
+        -- STRIKE: sweeping forward and slightly up
+        return { {dx=0, dy=0}, {dx=1, dy=0}, {dx=2, dy=-1}, {dx=3, dy=-1} }
+    elseif progress <= 0.65 then
+        -- IMPACT: fully forward and up
+        return { {dx=0, dy=0}, {dx=1, dy=-1}, {dx=2, dy=-1}, {dx=3, dy=-2} }
+    elseif progress <= 0.80 then
+        -- REBOUND
+        return { {dx=0, dy=0}, {dx=1, dy=0}, {dx=2, dy=0}, {dx=2, dy=-1} }
+    else
+        -- RECOVERY: normal
+        return nil
+    end
+end
+
+-- Default to side swing, pass variant through
+function M.get_swing_offsets(progress, facing, variant)
+    if variant == 2 then
+        return M.get_side_swing_offsets_2(progress, facing)
+    elseif variant == 3 then
+        return M.get_overhead_swing_offsets(progress, facing)
+    end
+    return M.get_side_swing_offsets(progress, facing)
+end
+
+function M.get_swing_arm_shape(progress, variant)
+    if variant == 2 then
+        return M.get_side_swing_arm_shape_2(progress)
+    elseif variant == 3 then
+        return M.get_overhead_swing_arm_shape(progress)
+    end
+    return M.get_side_swing_arm_shape(progress)
 end
 
 -- ============================================================

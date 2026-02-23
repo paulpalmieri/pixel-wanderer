@@ -46,8 +46,10 @@ end
 
 local function draw_single_robot(robot, world)
     local sprite = robot.sprite
-    local px = math.floor(robot.x + 0.5)
-    local py = math.floor(robot.y + 0.5)
+    local cam_ix = math.floor(world.camera_x + 0.5)
+    local cam_iy = math.floor(world.camera_y + 0.5)
+    local px = math.floor(robot.x - world.camera_x + 0.5) + cam_ix
+    local py = math.floor(robot.y - world.camera_y + 0.5) + cam_iy
     local facing = robot.facing
     local body_w = sprite.body_w
 

@@ -21,6 +21,7 @@ local sys_combat  = require("sys.combat")
 local sys_physics = require("sys.physics")
 local sys_camera  = require("sys.camera")
 local sys_robot   = require("sys.robot")
+local music       = require("core.music")
 
 -- Draw
 local draw_sky      = require("draw.sky")
@@ -84,8 +85,8 @@ local function init_game(existing_upgrades)
         world.floating_texts = {}
     end
 
-    -- Battery: 10s base + upgrade bonus
-    local base_battery = 10
+    -- Battery: 60s base + upgrade bonus
+    local base_battery = 60
     local bonus = world.upgrades.battery_bonus or 0
     world.battery = base_battery + bonus
 
@@ -101,11 +102,7 @@ end
 function love.load()
     love.graphics.setDefaultFilter("nearest", "nearest")
 
-    -- Background music (persists across restarts)
-    local bgm = love.audio.newSource("assets/background_music.mp3", "stream")
-    bgm:setVolume(0.15)
-    bgm:setLooping(true)
-    bgm:play()
+    music.init()
 
     init_game(nil)  -- fresh start, no upgrades
 end
@@ -113,7 +110,7 @@ end
 function love.keypressed(key)
     if key == "r" then
         if world.game_state == "playing" then
-            world.player.sprite = gen_char.generate()
+            world.player.sprite = gen_char.generate_player()
         end
     end
     if key == "space" and world.game_state == "playing" and world.entrance_anim_done and world.player.on_ground then
@@ -175,6 +172,7 @@ function love.mousepressed(x, y, button)
         if button == 1 and world.entrance_anim_done and world.player.axe_cooldown <= 0 then
             world.player.axe_swing = 0.001
             world.player.axe_has_hit = false
+            world.player.swing_variant = math.random(1, 3)
             
             local cooldown = 0.40
             if world.upgrades and world.upgrades.swing_speed then
@@ -275,6 +273,8 @@ function love.update(dt)
         -- Just tick the camera smoothly so the frozen world still looks nice
         -- (no physics, no battery drain)
     end
+
+    music.update(dt, world.game_state)
 end
 
 function love.draw()

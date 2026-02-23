@@ -44,7 +44,7 @@ end
 -- BATTERY BAR
 -- ============================================================
 function M.draw_battery(world)
-    local max_battery = 10 + (world.upgrades and world.upgrades.battery_bonus or 0)
+    local max_battery = 60 + (world.upgrades and world.upgrades.battery_bonus or 0)
     local frac = math.max(0, math.min(1, world.battery / max_battery))
 
     local bx, by = 10, 10
@@ -543,41 +543,27 @@ function M.draw_hud(world)
         M.draw_battery(world)
     end
 
-    -- Floating damage numbers
+    -- Floating texts (info)
     for _, ft in ipairs(world.floating_texts) do
-        if ft.is_crit ~= nil then
-            local t = ft.life / ft.max_life
-            local alpha = t
-            local scale = ft.scale or 1.0
-            local age = ft.max_life - ft.life
-            if age < 0.1 then
-                scale = scale * (1.0 + (1.0 - age / 0.1) * 0.5)
-            end
-
-            local sx = math.floor((ft.x - world.camera_x) * PIXEL)
-            local sy = math.floor((ft.y - world.camera_y) * PIXEL)
-
-            if ft.is_crit then
-                local shadow = PAL[16]
-                love.graphics.setColor(shadow[1], shadow[2], shadow[3], 1.0)
-                for ox = -1, 1 do
-                    for oy = -1, 1 do
-                        if ox ~= 0 or oy ~= 0 then
-                            love.graphics.print(ft.text, sx + ox, sy + oy, 0, scale, scale)
-                        end
-                    end
-                end
-                local crit = PAL[6]
-                love.graphics.setColor(crit[1], crit[2], crit[3], 1.0)
-            else
-                local shadow = PAL[16]
-                love.graphics.setColor(shadow[1], shadow[2], shadow[3], 1.0)
-                love.graphics.print(ft.text, sx + 1, sy + 1, 0, scale, scale)
-                local white = PAL[20]
-                love.graphics.setColor(white[1], white[2], white[3], 1.0)
-            end
-            love.graphics.print(ft.text, sx, sy, 0, scale, scale)
+        local t = ft.life / ft.max_life
+        local alpha = t
+        local scale = ft.scale or 1.0
+        local age = ft.max_life - ft.life
+        if age < 0.1 then
+            scale = scale * (1.0 + (1.0 - age / 0.1) * 0.5)
         end
+
+        local cx = math.floor(ft.x - world.camera_x + 0.5)
+        local cy = math.floor(ft.y - world.camera_y + 0.5)
+        local sx = math.floor(cx * PIXEL)
+        local sy = math.floor(cy * PIXEL)
+
+        local shadow = PAL[16]
+        love.graphics.setColor(shadow[1], shadow[2], shadow[3], 1.0)
+        love.graphics.print(ft.text, sx + 1, sy + 1, 0, scale, scale)
+        local white = PAL[20]
+        love.graphics.setColor(white[1], white[2], white[3], 1.0)
+        love.graphics.print(ft.text, sx, sy, 0, scale, scale)
     end
 
     -- Resource log (top-right, slides in and fades)
@@ -643,8 +629,10 @@ function M.draw_hud(world)
         local px = world.player.x + 8
         local entrance_zone_right = C.WALL_WIDTH + C.ENTRANCE_DOOR_W + 24
         if px < entrance_zone_right then
-            local btn_screen_x = math.floor(((world._btn_x or 19) - world.camera_x) * PIXEL)
-            local btn_screen_y = math.floor(((world._btn_y or 64) - world.camera_y) * PIXEL)
+            local btn_cx = math.floor((world._btn_x or 19) - world.camera_x + 0.5)
+            local btn_cy = math.floor((world._btn_y or 64) - world.camera_y + 0.5)
+            local btn_screen_x = math.floor(btn_cx * PIXEL)
+            local btn_screen_y = math.floor(btn_cy * PIXEL)
             if world.player.wood_count >= 20 then
                 -- Teal prompt (Success)
                 local prompt = PAL[12]

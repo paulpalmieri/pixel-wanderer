@@ -128,8 +128,9 @@ function M.update(dt, world)
                 local tree_cx = robot.target_tree.x + robot.target_tree.w / 2
                 local robot_cx = robot.x + 8
                 local dist = math.abs(tree_cx - robot_cx)
+                local trunk_hw = math.max(2, math.floor(robot.target_tree.w * 0.15))
                 
-                if dist > 12 then
+                if dist > 14 + trunk_hw - 2 then
                     robot.facing = (tree_cx > robot_cx) and 1 or -1
                     local new_x = robot.x + robot.facing * C.MOVE_SPEED * dt
                     -- Check tree collision before applying movement
@@ -206,8 +207,9 @@ function M.update(dt, world)
                         local robot_cx = robot.x + 8
                         local dist_x = math.abs(robot_cx - tree_center_x)
                         
-                        -- Base check if within distance
-                        if dist_x < 16 then
+                        -- Base check if within distance + trunk width
+                        local trunk_hw = math.max(2, math.floor(t.w * 0.15))
+                        if dist_x < 14 + trunk_hw + 2 then
                             combat.hit_tree(world, robot, t)
                             break
                         end

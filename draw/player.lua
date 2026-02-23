@@ -18,7 +18,7 @@ local function get_offsets(player)
 
     -- Priority: swing > land squash > jump > walk > idle
     if swing > 0 and swing < 1 then
-        return anim.get_swing_offsets(swing, player.facing)
+        return anim.get_swing_offsets(swing, player.facing, player.swing_variant)
     end
 
     if not player.on_ground then
@@ -54,8 +54,10 @@ end
 function M.draw_player(world)
     local player = world.player
     local sprite = player.sprite
-    local px = math.floor(player.x + 0.5)
-    local py = math.floor(player.y + 0.5)
+    local cam_ix = math.floor(world.camera_x + 0.5)
+    local cam_iy = math.floor(world.camera_y + 0.5)
+    local px = math.floor(player.x - world.camera_x + 0.5) + cam_ix
+    local py = math.floor(player.y - world.camera_y + 0.5) + cam_iy
     local facing = player.facing
     local body_w = sprite.body_w
 
@@ -132,7 +134,7 @@ function M.draw_player(world)
 
             local custom_arm = nil
             if part_name == "near_arm" and player.axe_swing > 0 and player.axe_swing < 1 then
-                custom_arm = anim.get_swing_arm_shape(player.axe_swing)
+                custom_arm = anim.get_swing_arm_shape(player.axe_swing, player.swing_variant)
             end
 
             if custom_arm then
@@ -174,7 +176,7 @@ function M.draw_player(world)
     local hand_dx = 0
     local hand_dy = near_arm.h
     if player.axe_swing > 0 and player.axe_swing < 1 then
-        local custom_arm = anim.get_swing_arm_shape(player.axe_swing)
+        local custom_arm = anim.get_swing_arm_shape(player.axe_swing, player.swing_variant)
         if custom_arm then
             local last_p = custom_arm[#custom_arm]
             hand_dx = last_p.dx
@@ -201,7 +203,7 @@ function M.draw_player(world)
     }
 end
 
-function M.draw_axe(world, result)
+function M.draw_axe_overhead(world, result)
     local player = world.player
     local dir = player.facing
     local swing = player.axe_swing
@@ -272,7 +274,7 @@ function M.draw_axe(world, result)
         table.insert(axe_pixels, {hx + d*7, hy,     BLADE_EDGE})
         table.insert(axe_pixels, {hx + d*7, hy + 1, BLADE_EDGE})
 
-    elseif swing <= 0.25 then
+    elseif swing <= 0.15 then
         -- WINDUP: hand is down/back. Axe points up and back
         table.insert(axe_pixels, {hx,       hy,     HANDLE_DARK})
         table.insert(axe_pixels, {hx - d,   hy - 1, HANDLE_LIGHT})
@@ -294,7 +296,7 @@ function M.draw_axe(world, result)
         table.insert(axe_pixels, {hx - d*7, hy - 6, BLADE_EDGE})
         table.insert(axe_pixels, {hx - d*8, hy - 5, BLADE_EDGE})
 
-    elseif swing <= 0.35 then
+    elseif swing <= 0.25 then
         -- PEAK: hand is mid-back. Axe points steeply up
         table.insert(axe_pixels, {hx,       hy,     HANDLE_DARK})
         table.insert(axe_pixels, {hx,       hy - 1, HANDLE_LIGHT})
@@ -316,7 +318,7 @@ function M.draw_axe(world, result)
         table.insert(axe_pixels, {hx,       hy - 7, BLADE_EDGE})
         table.insert(axe_pixels, {hx - d,   hy - 7, BLADE_EDGE})
 
-    elseif swing <= 0.45 then
+    elseif swing <= 0.40 then
         -- STRIKE: hand is front-down. Axe swinging down
         table.insert(axe_pixels, {hx,       hy,     HANDLE_DARK})
         table.insert(axe_pixels, {hx + d,   hy + 1, HANDLE_LIGHT})
@@ -385,18 +387,18 @@ function M.draw_axe(world, result)
     end
 
     -- Dynamic Smear: keyframed crescent arc from shoulder pivot
-    if swing > 0.0 and swing <= 0.45 then
+    if swing > 0.0 and swing <= 0.40 then
         local cx = result.base_x + math.floor(result.body_w / 2)
         local cy = result.base_y + 4 -- shoulder pivot
 
         local radius = 10
         -- Arc angles: behind-down to forward-down (0=right, pi=left, -pi/2=up)
         local a0, a1 -- start and end angle for this keyframe
-        if swing <= 0.25 then
+        if swing <= 0.15 then
             -- WINDUP: short arc behind the character
             a0 = math.pi * 0.75
             a1 = math.pi * 0.55
-        elseif swing <= 0.35 then
+        elseif swing <= 0.25 then
             -- PEAK: arc sweeps overhead
             a0 = math.pi * 0.65
             a1 = math.pi * 0.2
@@ -442,6 +444,277 @@ function M.draw_axe(world, result)
     if entrance_clip then
         love.graphics.setScissor()
     end
+end
+
+function M.draw_axe_side(world, result)
+    local player = world.player
+    local dir = player.facing
+    local swing = player.axe_swing
+    local variant = player.swing_variant or 1
+
+    -- Elevator door clipping for axe too
+    local entrance_clip = not world.entrance_anim_done and (world.door_state == "closed" or world.door_state == "opening" or world.door_state == "walk_in")
+    if entrance_clip then
+        local cam_ix = math.floor(world.camera_x + 0.5)
+        local cam_iy = math.floor(world.camera_y + 0.5)
+        local door_left = C.WALL_WIDTH
+        local door_w = C.ENTRANCE_DOOR_W
+        local door_h = 20
+        local door_top = world.ground.base_y - door_h
+        local half_w = math.floor(door_w / 2)
+        local open_amount = world.door_open_amount or 0
+        local slide = math.floor(half_w * open_amount)
+        local gap_left = door_left + half_w - slide - cam_ix
+        local gap_top = door_top - cam_iy
+
+        if open_amount >= 1.0 then
+            local clip_left = door_left - cam_ix
+            love.graphics.setScissor(clip_left, 0, C.GAME_W - clip_left, C.GAME_H)
+        else
+            local gap_right = door_left + half_w + slide - cam_ix
+            local gap_w = gap_right - gap_left
+            if gap_w > 0 then
+                love.graphics.setScissor(gap_left, gap_top, gap_w, door_h)
+            else
+                love.graphics.setScissor(0, 0, 0, 0)
+            end
+        end
+    end
+
+    local hx = result.hand_x
+    local hy = result.hand_y
+    local d = dir
+
+    -- Color constants
+    local HANDLE_DARK = 16    -- dark
+    local HANDLE_LIGHT = 5    -- light
+    local HANDLE_HI = 6       -- wood highlight
+    local BLADE_INNER = 19    -- steel mid
+    local BLADE_OUTER = 20    -- steel hi
+    local BLADE_EDGE  = 16    -- steel shadow
+    local SMEAR       = 20    -- motion smear
+
+    local axe_pixels = {}
+    
+    if swing <= 0.0 then
+        -- REST: held horizontally forward
+        table.insert(axe_pixels, {hx,       hy,     HANDLE_DARK})
+        table.insert(axe_pixels, {hx + d,   hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx + d*2, hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx + d*3, hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx + d*4, hy,     HANDLE_HI})
+        -- Big Blade head (Standard Shape)
+        table.insert(axe_pixels, {hx + d*5, hy - 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*5, hy - 1, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*5, hy,     BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*5, hy + 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*5, hy + 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*6, hy - 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*6, hy - 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*6, hy,     BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*6, hy + 1, BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*6, hy + 2, BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*7, hy - 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*7, hy,     BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*7, hy + 1, BLADE_EDGE})
+
+    elseif swing <= 0.15 then
+        -- WINDUP: hand is back, axe horizontal pointing backward
+        table.insert(axe_pixels, {hx,       hy,     HANDLE_DARK})
+        table.insert(axe_pixels, {hx - d,   hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx - d*2, hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx - d*3, hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx - d*4, hy,     HANDLE_HI})
+        -- Blade pointing back
+        table.insert(axe_pixels, {hx - d*5, hy - 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx - d*5, hy - 1, BLADE_OUTER})
+        table.insert(axe_pixels, {hx - d*5, hy,     BLADE_INNER})
+        table.insert(axe_pixels, {hx - d*5, hy + 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx - d*5, hy + 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx - d*6, hy - 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx - d*6, hy - 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx - d*6, hy,     BLADE_INNER})
+        table.insert(axe_pixels, {hx - d*6, hy + 1, BLADE_EDGE})
+        table.insert(axe_pixels, {hx - d*6, hy + 2, BLADE_EDGE})
+        table.insert(axe_pixels, {hx - d*7, hy - 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx - d*7, hy,     BLADE_EDGE})
+        table.insert(axe_pixels, {hx - d*7, hy + 1, BLADE_EDGE})
+
+    elseif swing <= 0.25 then
+        -- PEAK: hand fully back, axe horizontal pointing backward
+        table.insert(axe_pixels, {hx,       hy,     HANDLE_DARK})
+        table.insert(axe_pixels, {hx - d,   hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx - d*2, hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx - d*3, hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx - d*4, hy,     HANDLE_HI})
+        -- Blade pointing back
+        table.insert(axe_pixels, {hx - d*5, hy - 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx - d*5, hy - 1, BLADE_OUTER})
+        table.insert(axe_pixels, {hx - d*5, hy,     BLADE_INNER})
+        table.insert(axe_pixels, {hx - d*5, hy + 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx - d*5, hy + 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx - d*6, hy - 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx - d*6, hy - 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx - d*6, hy,     BLADE_INNER})
+        table.insert(axe_pixels, {hx - d*6, hy + 1, BLADE_EDGE})
+        table.insert(axe_pixels, {hx - d*6, hy + 2, BLADE_EDGE})
+        table.insert(axe_pixels, {hx - d*7, hy - 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx - d*7, hy,     BLADE_EDGE})
+        table.insert(axe_pixels, {hx - d*7, hy + 1, BLADE_EDGE})
+
+    elseif swing <= 0.40 then
+        -- STRIKE: sweeping forward (mid-sweep blurred shape)
+        table.insert(axe_pixels, {hx,       hy,     HANDLE_DARK})
+        table.insert(axe_pixels, {hx + d,   hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx + d*2, hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx + d*3, hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx + d*4, hy,     HANDLE_HI})
+        
+        table.insert(axe_pixels, {hx + d*5, hy - 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*5, hy - 1, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*5, hy,     BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*5, hy + 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*5, hy + 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*6, hy - 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*6, hy - 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*6, hy,     BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*6, hy + 1, BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*6, hy + 2, BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*7, hy - 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*7, hy,     BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*7, hy + 1, BLADE_EDGE})
+
+    elseif swing <= 0.65 then
+        -- IMPACT: horizontal fully forward 
+        table.insert(axe_pixels, {hx,       hy,     HANDLE_DARK})
+        table.insert(axe_pixels, {hx + d,   hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx + d*2, hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx + d*3, hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx + d*4, hy,     HANDLE_HI})
+        
+        table.insert(axe_pixels, {hx + d*5, hy - 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*5, hy - 1, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*5, hy,     BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*5, hy + 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*5, hy + 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*6, hy - 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*6, hy - 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*6, hy,     BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*6, hy + 1, BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*6, hy + 2, BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*7, hy - 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*7, hy,     BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*7, hy + 1, BLADE_EDGE})
+
+    else
+        -- REBOUND / RECOVERY
+        -- Identical to REST
+        table.insert(axe_pixels, {hx,       hy,     HANDLE_DARK})
+        table.insert(axe_pixels, {hx + d,   hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx + d*2, hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx + d*3, hy,     HANDLE_LIGHT})
+        table.insert(axe_pixels, {hx + d*4, hy,     HANDLE_HI})
+        
+        table.insert(axe_pixels, {hx + d*5, hy - 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*5, hy - 1, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*5, hy,     BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*5, hy + 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*5, hy + 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*6, hy - 2, BLADE_OUTER})
+        table.insert(axe_pixels, {hx + d*6, hy - 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*6, hy,     BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*6, hy + 1, BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*6, hy + 2, BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*7, hy - 1, BLADE_INNER})
+        table.insert(axe_pixels, {hx + d*7, hy,     BLADE_EDGE})
+        table.insert(axe_pixels, {hx + d*7, hy + 1, BLADE_EDGE})
+    end
+
+    -- Horizontal Smear: flat sweep from behind to straight forward
+    if swing > 0.0 and swing <= 0.40 then
+        local cx = result.base_x + math.floor(result.body_w / 2)
+        local cy = result.base_y + 8 -- lower pivot point for horizontal smear, around waist/chest height
+
+        local radius = 8
+        local a0, a1
+        
+        if variant == 2 then
+            -- Variant 2: Low-to-high upward slash (no smear)
+            a0, a1 = nil, nil
+        else
+            -- Variant 1: Straight horizontal slash
+            if swing <= 0.15 then
+                a0, a1 = nil, nil
+            elseif swing <= 0.25 then
+                a0 = math.pi
+                a1 = math.pi * 0.75
+            else
+                a0 = math.pi
+                a1 = 0
+            end
+        end
+
+        if a0 and a1 then
+            local steps = 16
+            for i = 0, steps do
+                local t = i / steps
+                local angle = a0 + (a1 - a0) * t
+                local cos_a = math.cos(angle)
+                
+                -- Adjust sine wave to flatten or angle the sweep
+                local sin_a
+                if variant == 2 then
+                    sin_a = -math.sin(angle) * 0.9  -- More vertical travel for the upward sweep
+                else
+                    sin_a = -math.sin(angle) * 0.3  -- Flattened oval for horizontal sweep
+                end
+
+                local thickness = math.sin(t * math.pi) * 2 -- Crescent thickness (2 at middle, 0 at edges)
+
+                local ox = cx + math.floor(cos_a * (radius + thickness) * d + 0.5)
+                local oy = cy + math.floor(sin_a * (radius + thickness) + 0.5)
+                local ix = cx + math.floor(cos_a * (radius - thickness) * d + 0.5)
+                local iy = cy + math.floor(sin_a * (radius - thickness) + 0.5)
+                local mx = cx + math.floor(cos_a * radius * d + 0.5)
+                local my = cy + math.floor(sin_a * radius + 0.5)
+
+                set_color(SMEAR)
+                draw_pixel(mx, my)
+                if thickness > 0.5 then
+                    draw_pixel(ix, iy)
+                    draw_pixel(ox, oy)
+                end
+                if thickness > 1.5 then
+                    local ox2 = cx + math.floor(cos_a * (radius + thickness + 1) * d + 0.5)
+                    local ix2 = cx + math.floor(cos_a * (radius - thickness - 1) * d + 0.5)
+                    local oy2 = cy + math.floor(sin_a * (radius + thickness + 1) + 0.5)
+                    local iy2 = cy + math.floor(sin_a * (radius - thickness - 1) + 0.5)
+                    draw_pixel(ix2, iy2)
+                    draw_pixel(ox2, oy2)
+                end
+            end
+        end
+    end
+
+    for _, ap in ipairs(axe_pixels) do
+        set_color(ap[3])
+        draw_pixel(ap[1], ap[2])
+    end
+
+    -- Reset entrance clip scissor
+    if entrance_clip then
+        love.graphics.setScissor()
+    end
+end
+
+function M.draw_axe(world, result)
+    local player = world.player
+    local variant = player.swing_variant or 1
+    
+    if variant == 3 then
+        return M.draw_axe_overhead(world, result)
+    end
+    return M.draw_axe_side(world, result)
 end
 
 return M
